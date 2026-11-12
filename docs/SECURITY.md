@@ -98,8 +98,18 @@ logged. **Do not use pre-Phase-4 builds against untrusted networks.**
 - `Cargo.lock` and `package-lock.json` committed; CI uses `--locked` / `npm ci`.
 - CI gates: `cargo audit` (any advisory fails); `npm audit --omit=dev
 --audit-level=moderate` (shipped JS); `npm audit --audit-level=high` (dev tooling).
-- Known accepted finding (2026-11-12): moderate ReDoS in `minimatch`, pulled in by
-  ESLint / typescript-eslint. Dev-only, never shipped; revisit when upstream updates.
+- Known accepted findings (2026-11-12):
+  - npm: moderate ReDoS in `minimatch`, pulled in by ESLint / typescript-eslint.
+    Dev-only, never shipped; revisit when upstream updates.
+  - cargo-audit _warnings_ (not vulnerabilities): `glib` 0.18 unsound iterator
+    (RUSTSEC-2024-0429) and `proc-macro-error` unmaintained (RUSTSEC-2024-0370).
+    Both come from Tauri's Linux GTK stack. `cargo tree --target
+x86_64-pc-windows-msvc` confirms they are not in Windows builds. Resolved when
+    Tauri moves to gtk-rs ≥ 0.20.
+- Phase 0 audit fixed: `quick-xml` RUSTSEC-2026-0194/0195 (high) and `time`
+  RUSTSEC-2026-0009 (medium), via lockfile update (tauri 2.12.0 → 2.12.5).
+- No `rust-version` (MSRV) is set: an MSRV makes Cargo's resolver hold back
+  patched crates. The repo tracks current stable via `rust-toolchain.toml`.
 - Dependabot weekly for cargo, npm, GitHub Actions. Tauri JS and Rust packages must
   move together (same major.minor).
 

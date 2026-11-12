@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "NexTerm - open-source, security-focused SSH/SFTP client"
 authors = ["NexTerm contributors"]
 edition = "2024"
-rust-version = "1.85"
 
 [lib]
 # The `_lib` suffix avoids a name clash between the lib and bin targets on Windows.

@@ -24,3 +24,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 - Removed the template's `opener` plugin; no `shell` plugin.
 - `unsafe_code = "forbid"`; clippy denies `unwrap`/`expect` outside tests.
 - CI: `cargo audit`, `npm audit`, Dependabot for cargo / npm / GitHub Actions.
+
+### Fixed
+
+- RUSTSEC-2026-0194/0195 (`quick-xml`, high) and RUSTSEC-2026-0009 (`time`, medium) via
+  dependency update (tauri 2.12.5).
