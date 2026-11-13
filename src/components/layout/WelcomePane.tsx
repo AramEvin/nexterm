@@ -1,9 +1,16 @@
 import { KeyRound, Terminal, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useSessionStore } from "@/stores/session";
 
-/** Content of the Home tab. Becomes the quick-connect entry point in Phase 1. */
-export function WelcomePane() {
+interface WelcomePaneProps {
+  onQuickConnect: () => void;
+}
+
+/** Content of the Home tab. */
+export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
+  const hasSession = useSessionStore((s) => s.session !== null);
+
   return (
     <div className="flex h-full items-center justify-center p-8">
       <div className="flex max-w-md flex-col items-center gap-6 text-center">
@@ -17,7 +24,7 @@ export function WelcomePane() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button disabled>
+          <Button onClick={onQuickConnect} disabled={hasSession}>
             <Zap /> Quick connect
           </Button>
           <Button variant="outline" disabled>
@@ -25,7 +32,9 @@ export function WelcomePane() {
           </Button>
         </div>
         <p className="text-muted-foreground/70 text-xs">
-          Phase 0 shell — connections arrive in Phase 1.
+          {hasSession
+            ? "Close the open session to start another (multiple tabs arrive in Phase 2)."
+            : "Saved sessions arrive in Phase 3, the vault in Phase 4."}
         </p>
       </div>
     </div>

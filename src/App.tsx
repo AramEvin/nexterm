@@ -1,19 +1,29 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
+import { QuickConnectDialog } from "@/components/dialogs/QuickConnectDialog";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { TabBar } from "@/components/layout/TabBar";
 import { WelcomePane } from "@/components/layout/WelcomePane";
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { TerminalView } from "@/components/terminal/TerminalView";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useSessionStore } from "@/stores/session";
 import { useUiStore } from "@/stores/ui";
 
 /** Application shell: sidebar | (tabs + content) / status bar. */
 export default function App() {
   const loadAppInfo = useUiStore((s) => s.loadAppInfo);
+  const session = useSessionStore((s) => s.session);
+  const activeTab = useSessionStore((s) => s.activeTab);
+  const [quickConnectOpen, setQuickConnectOpen] = useState(false);
 
   useEffect(() => {
     void loadAppInfo();
   }, [loadAppInfo]);
+
+  const openQuickConnect = () => {
+    setQuickConnectOpen(true);
+  };
 
   return (
     <TooltipProvider>
@@ -21,14 +31,22 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
-            <TabBar />
+            <TabBar onNewSession={openQuickConnect} />
             <div className="bg-background min-h-0 flex-1">
-              <WelcomePane />
+              {activeTab === "home" && <WelcomePane onQuickConnect={openQuickConnect} />}
+              {session && (
+                <TerminalView
+                  key={session.id}
+                  session={session}
+                  visible={activeTab === "session"}
+                />
+              )}
             </div>
           </main>
         </div>
         <StatusBar />
       </div>
+      <QuickConnectDialog open={quickConnectOpen} onOpenChange={setQuickConnectOpen} />
     </TooltipProvider>
   );
 }
