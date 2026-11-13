@@ -32,9 +32,16 @@ pub fn run() -> anyhow::Result<()> {
                 "NexTerm starting"
             );
             app.manage(guard);
+            app.manage(session::SessionManager::new());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::app::get_app_info])
+        .invoke_handler(tauri::generate_handler![
+            commands::app::get_app_info,
+            commands::ssh::ssh_connect,
+            commands::ssh::ssh_write,
+            commands::ssh::ssh_resize,
+            commands::ssh::ssh_disconnect,
+        ])
         .run(tauri::generate_context!())?;
 
     Ok(())
