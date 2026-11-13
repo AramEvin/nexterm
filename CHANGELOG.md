@@ -17,6 +17,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 - `tracing` logging to `%APPDATA%\NexTerm\logs`, daily rotation, 14 files kept; panics logged.
 - `get_app_info` IPC command (version shown in the status bar).
 
+### Added — app icon & Windows installer
+
+- Original NexTerm app icon (`assets/icon.svg`), generated into all sizes via `tauri icon`.
+- `scripts/build-windows-installer.sh`: build the NSIS installer from Linux (experimental cross-build).
+
 ### Security
 
 - Strict CSP (`script-src 'self'`, no `unsafe-eval`, IPC-only `connect-src`), `freezePrototype`.
