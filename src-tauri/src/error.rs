@@ -23,6 +23,15 @@ pub enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    /// Could not establish or keep a connection. The message is user-facing
+    /// and must not contain secrets.
+    #[error("connection failed: {0}")]
+    Connection(String),
+
+    /// The server rejected the supplied credentials.
+    #[error("authentication failed")]
+    AuthFailed,
+
     /// Filesystem / OS I/O failure. Details are logged, not exposed.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -38,6 +47,8 @@ impl AppError {
         match self {
             Self::Validation(_) => "VALIDATION",
             Self::NotFound(_) => "NOT_FOUND",
+            Self::Connection(_) => "CONNECTION",
+            Self::AuthFailed => "AUTH_FAILED",
             Self::Io(_) => "IO",
             Self::Internal(_) => "INTERNAL",
         }
@@ -48,6 +59,8 @@ impl AppError {
         match self {
             Self::Validation(msg) => msg.clone(),
             Self::NotFound(what) => format!("{what} was not found."),
+            Self::Connection(msg) => msg.clone(),
+            Self::AuthFailed => "Authentication failed. Check the username and password.".into(),
             Self::Io(_) => "A file or system operation failed. See the log for details.".into(),
             Self::Internal(_) => "An unexpected error occurred. See the log for details.".into(),
         }
