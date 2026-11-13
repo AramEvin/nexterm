@@ -16,6 +16,9 @@
 //!   cargo test --test ssh_integration -- --ignored --test-threads=1
 //! ```
 
+// Test code: panicking on unexpected state is the point.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -54,7 +57,10 @@ impl CollectSink {
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        panic!("timed out waiting for {needle:?}; output so far:\n{}", self.text());
+        panic!(
+            "timed out waiting for {needle:?}; output so far:\n{}",
+            self.text()
+        );
     }
 }
 
@@ -77,7 +83,10 @@ async fn interactive_shell_pty_resize_utf8_and_exit() {
     let sink = Arc::new(CollectSink::default());
     let handle = SshProtocol::open(
         params(&env("NEXTERM_TEST_SSH_PASSWORD")),
-        TerminalSize { cols: 100, rows: 30 },
+        TerminalSize {
+            cols: 100,
+            rows: 30,
+        },
         sink.clone(),
     )
     .await
@@ -98,7 +107,10 @@ async fn interactive_shell_pty_resize_utf8_and_exit() {
     // Resize reaches the remote PTY.
     handle
         .commands
-        .send(SessionCommand::Resize(TerminalSize { cols: 132, rows: 43 }))
+        .send(SessionCommand::Resize(TerminalSize {
+            cols: 132,
+            rows: 43,
+        }))
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -171,5 +183,9 @@ async fn closed_port_is_connection_refused() {
         panic!("expected an error");
     };
     assert_eq!(err.code(), "CONNECTION");
-    assert!(err.user_message().contains("refused"), "{}", err.user_message());
+    assert!(
+        err.user_message().contains("refused"),
+        "{}",
+        err.user_message()
+    );
 }

@@ -1,0 +1,11 @@
+# cargo-audit configuration. Every ignore needs a justification and a review date.
+[advisories]
+ignore = [
+  # RUSTSEC-2023-0071 (rsa, "Marvin" timing side channel on RSA *decryption*).
+  # - Pulled in by russh 0.65.1, which pins rsa =0.10.0-rc.18; flagged only because
+  #   a pre-release sorts below the patched 0.10.0.
+  # - rc.18 already uses constant-time crypto-bigint (the upstream fix).
+  # - SSH uses RSA only for signatures; russh never performs RSA decryption.
+  # Review: when russh moves to rsa >= 0.10.0 (Dependabot), or 2027-02-01.
+  "RUSTSEC-2023-0071",
+]
