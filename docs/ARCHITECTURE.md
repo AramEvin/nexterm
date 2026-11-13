@@ -33,10 +33,15 @@ commands that are explicitly granted in `src-tauri/capabilities/`.
    and delegates.
 3. **Errors:** every command returns `Result<T, AppError>`. `AppError` serializes to
    `{ code, message }` with a user-safe message; details go to the log only.
-4. **Streaming:** terminal output uses one `tauri::ipc::Channel<Vec<u8>>` per
-   session, not global events. Input: `ssh_write`; resize: `ssh_resize`.
-5. **Isolation:** each live session runs in its own tokio task.
-6. **Protocols:** SSH is the first implementation behind the protocol boundary in
+4. **Streaming:** each session gets two channels from the frontend:
+   `Channel<tauri::ipc::Response>` for terminal output (raw bytes, delivered to JS as
+   an `ArrayBuffer`, not a JSON number array) and `Channel<SessionStatus>` for
+   lifecycle events. Input: `ssh_write`; resize: `ssh_resize`; close: `ssh_disconnect`.
+5. **Ordered input:** IPC calls run concurrently in Rust, so per-keystroke writes
+   could be reordered. `TerminalController` keeps one `ssh_write` in flight and
+   batches keys typed meanwhile, which preserves order and cuts IPC volume.
+6. **Isolation:** each live session runs in its own tokio task.
+7. **Protocols:** SSH is the first implementation behind the protocol boundary in
    `session/protocol.rs` (see ADR 0002).
 
 ## Adding an IPC command (checklist)

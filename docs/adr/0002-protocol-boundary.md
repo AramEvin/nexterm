@@ -1,6 +1,6 @@
 # ADR 0002: Protocol boundary for future RDP / VNC / serial support
 
-- Status: Proposed (finalised in Phase 1)
+- Status: Accepted (Phase 1)
 - Date: 2026-11-12
 
 ## Context
@@ -19,7 +19,22 @@ not require rewriting the session manager, tabs or IPC.
   byte streams). They will get a sibling trait rather than being forced into the
   terminal one. The shared part is lifecycle + status reporting in `SessionManager`.
 
-## Why not define the full trait now
+## Phase 1 implementation
+
+`src-tauri/src/session/protocol.rs`:
+
+- `TerminalProtocol::open(params, size, sink) -> SessionHandle`: connect, auth,
+  start a shell. `SshProtocol` is the first implementation.
+- `SessionHandle { kind, commands: mpsc::Sender<SessionCommand>, task }`: the app
+  talks to any protocol through `Write(bytes)`, `Resize(size)` and `Close`.
+- `OutputSink`: the protocol pushes raw bytes and `SessionStatus` into it. The
+  Tauri implementation forwards to two IPC channels. Tests use an in-memory sink,
+  so protocols are tested headless against real servers.
+- `SessionManager` stores only the command sender per session id, plus a watcher
+  task that removes ended sessions and turns a panic into a "session crashed"
+  status (crash isolation, unit-tested).
+
+## Why the trait wasn't defined in Phase 0
 
 Designing the trait before one real implementation exists tends to produce the
 wrong shape. Phase 0 reserves the boundary (module + enum + this ADR). Phase 1

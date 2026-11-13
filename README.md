@@ -3,7 +3,8 @@
 A free, open-source, security-focused SSH & SFTP client for Windows (Linux/macOS
 later): a modern alternative to MobaXterm.
 
-> **Status: Phase 0 (scaffold).** The app opens an empty shell. No connections yet.
+> **Status: Phase 1.** Quick connect opens a real SSH terminal (password auth, one session at a time).
+> Host keys are **not verified** until Phase 4: only use it on networks you trust.
 
 ## Planned v1 features
 
@@ -16,7 +17,17 @@ later): a modern alternative to MobaXterm.
 - Import from MobaXterm and PuTTY
 - MSI/NSIS installers with signed auto-update
 
-## Current features (Phase 0)
+## Current features
+
+**Phase 1: SSH terminal**
+
+- Quick connect (host, port, username, password)
+- Full terminal: xterm.js with WebGL rendering (DOM fallback), 256 colours, UTF-8 / emoji / CJK
+- Works with full-screen apps (`htop`, `vim`, `top`, `mc`); resizes with the window
+- Copy/paste: **Ctrl+Shift+C / Ctrl+Shift+V**, Shift+Insert, right-click (copy selection / paste)
+- Clear messages for wrong password, refused/timed-out connections, dropped sessions and `exit`
+
+**Phase 0: foundation**
 
 - Tauri 2 desktop shell: sidebar, tab bar, status bar
 - Hardened defaults: strict CSP, deny-by-default IPC permissions, no shell/opener plugins

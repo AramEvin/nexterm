@@ -5,6 +5,40 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-13 — Phase 1: first SSH terminal
+
+### Added
+
+- Quick-connect dialog (host, port, username, password) with client- and server-side validation.
+- SSH via `russh` 0.65 (ring backend): password auth, PTY `xterm-256color`, login shell,
+  keepalive (30 s), 15 s connect timeout.
+- xterm.js 6 terminal: fit-to-pane, WebGL renderer with DOM fallback, Unicode 11 widths,
+  10k-line scrollback, Ctrl+Shift+C/V, Shift+Insert, right-click copy/paste.
+- Protocol boundary (`TerminalProtocol`, `OutputSink`, `SessionHandle`) and `SessionManager`
+  with per-session tokio tasks and crash isolation.
+- IPC: `ssh_connect`, `ssh_write`, `ssh_resize`, `ssh_disconnect`; terminal output streamed
+  as raw bytes over a per-session `Channel`.
+- Disconnect banner with reason (exit status, dropped connection, user disconnect).
+- Startup error screen instead of a blank window.
+- Integration tests against a real OpenSSH server (PTY size, resize, UTF-8, exit, auth failure,
+  connection refused); CI job runs them in a container.
+
+### Fixed
+
+- Keystrokes could arrive out of order when typed quickly (concurrent IPC calls). Input is
+  now queued with one write in flight.
+- Terminal now gets keyboard focus after quick connect.
+
+### Security
+
+- Host keys are accepted **without verification** until Phase 4; fingerprint logged at WARN.
+- `freezePrototype` disabled (incompatible with xterm.js 6); rationale in SECURITY.md.
+- Password goes straight into `SecretString` (zeroized, redacted in Debug); never stored in
+  frontend state.
+- RUSTSEC-2023-0071 (rsa, via russh) documented as not applicable; see SECURITY.md §8.
+
+## [0.1.0] - 2026-11-12
+
 ### Added — Phase 0: scaffold
 
 - Tauri 2 + React 19 + TypeScript (strict) + Vite project, identifier `com.nexterm.app`,
