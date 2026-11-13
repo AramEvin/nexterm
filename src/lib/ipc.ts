@@ -5,9 +5,15 @@
  * call the functions exported here, so every IPC call is typed and every
  * error is normalized into an `IpcError`.
  */
-import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { Channel, invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
-import type { AppErrorCode, AppErrorPayload, AppInfo } from "@/types/ipc";
+import type {
+  AppErrorCode,
+  AppErrorPayload,
+  AppInfo,
+  SessionStatus,
+  SshConnectRequest,
+} from "@/types/ipc";
 
 /** Error thrown by every IPC wrapper. `code` mirrors the Rust `AppError` code. */
 export class IpcError extends Error {
@@ -43,8 +49,48 @@ async function call<T>(command: string, args?: InvokeArgs): Promise<T> {
   }
 }
 
+/** Raw channel payloads arrive as ArrayBuffer; normalise to Uint8Array. */
+function toBytes(payload: unknown): Uint8Array {
+  if (payload instanceof ArrayBuffer) return new Uint8Array(payload);
+  if (payload instanceof Uint8Array) return payload;
+  if (Array.isArray(payload)) return Uint8Array.from(payload as number[]);
+  return new Uint8Array();
+}
+
 // ---- app ------------------------------------------------------------------
 
 export function getAppInfo(): Promise<AppInfo> {
   return call<AppInfo>("get_app_info");
+}
+
+// ---- ssh ------------------------------------------------------------------
+
+export interface SshSessionCallbacks {
+  /** Raw terminal output (UTF-8 bytes, possibly split mid-character). */
+  onOutput: (bytes: Uint8Array) => void;
+  onStatus: (status: SessionStatus) => void;
+}
+
+/** Connect and start a shell. Resolves with the session id. */
+export function sshConnect(
+  request: SshConnectRequest,
+  callbacks: SshSessionCallbacks,
+): Promise<string> {
+  const onOutput = new Channel<unknown>((payload) => {
+    callbacks.onOutput(toBytes(payload));
+  });
+  const onStatus = new Channel<SessionStatus>(callbacks.onStatus);
+  return call<string>("ssh_connect", { request, onOutput, onStatus });
+}
+
+export function sshWrite(sessionId: string, data: string): Promise<void> {
+  return call<undefined>("ssh_write", { sessionId, data });
+}
+
+export function sshResize(sessionId: string, cols: number, rows: number): Promise<void> {
+  return call<undefined>("ssh_resize", { sessionId, cols, rows });
+}
+
+export function sshDisconnect(sessionId: string): Promise<void> {
+  return call<undefined>("ssh_disconnect", { sessionId });
 }

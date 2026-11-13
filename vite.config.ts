@@ -31,5 +31,7 @@ export default defineConfig(() => ({
     // WebView2 is Chromium-based and evergreen.
     target: "chrome120",
     sourcemap: false,
+    // Loaded from disk by the desktop app, not over a network: one bundle is fine.
+    chunkSizeWarningLimit: 1500,
   },
 }));
