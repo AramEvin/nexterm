@@ -16,9 +16,7 @@ function show(message: string): void {
 
 window.addEventListener("error", (e) => {
   const err: unknown = e.error;
-  show(
-    err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ""}` : String(e.message),
-  );
+  show(err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ""}` : e.message);
 });
 window.addEventListener("unhandledrejection", (e) => {
   const reason: unknown = e.reason;
