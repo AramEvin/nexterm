@@ -28,15 +28,91 @@ interface TabBarProps {
   onNewSession: () => void;
 }
 
-/** MIME type for tab drag-and-drop, so dropping text/files from outside is ignored. */
-const TAB_DRAG_TYPE = "application/x-nexterm-tab";
+/** Pixels the pointer must travel before a press becomes a drag. */
+const DRAG_THRESHOLD_PX = 5;
 
-/** Tab strip: Home + one tab per session. Scrolls horizontally when full. */
+interface DragState {
+  tabId: string;
+  startX: number;
+  active: boolean;
+  overId: string | null;
+}
+
+/**
+ * Tab reordering with pointer events instead of HTML5 drag-and-drop: on
+ * Windows, Tauri's native file-drop handling (needed for SFTP uploads from
+ * Explorer in Phase 5) swallows HTML5 drag events inside the webview.
+ */
+function useTabDrag(moveTab: (tabId: string, targetId: string) => void) {
+  const drag = useRef<DragState | null>(null);
+  const suppressClick = useRef(false);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  const tabIdAt = (x: number, y: number): string | null => {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-tab-id]");
+    const id = el?.dataset.tabId;
+    return id && id !== HOME_TAB ? id : null;
+  };
+
+  const onPointerDown = (tabId: string) => (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    drag.current = { tabId, startX: e.clientX, active: false, overId: null };
+  };
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d) return;
+      if (!d.active) {
+        if (Math.abs(e.clientX - d.startX) < DRAG_THRESHOLD_PX) return;
+        d.active = true;
+        setDraggingId(d.tabId);
+      }
+      const over = tabIdAt(e.clientX, e.clientY);
+      const target = over !== d.tabId ? over : null;
+      if (target !== d.overId) {
+        d.overId = target;
+        setOverId(target);
+      }
+    };
+    const onUp = () => {
+      const d = drag.current;
+      drag.current = null;
+      if (!d?.active) return;
+      suppressClick.current = true; // the click that follows a drag is not a "select"
+      if (d.overId) moveTab(d.tabId, d.overId);
+      setOverId(null);
+      setDraggingId(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("blur", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("blur", onUp);
+    };
+  }, [moveTab]);
+
+  /** Returns true (and resets) if the current click ends a drag. */
+  const consumeDragClick = () => {
+    const was = suppressClick.current;
+    suppressClick.current = false;
+    return was;
+  };
+
+  return { onPointerDown, overId, draggingId, consumeDragClick };
+}
+
+/** Tab strip: pinned Home tab + one tab per session (scrolls horizontally when full). */
 export function TabBar({ onNewSession }: TabBarProps) {
   const tabs = useSessionStore((s) => s.tabs);
   const activeTabId = useSessionStore((s) => s.activeTabId);
   const setActiveTab = useSessionStore((s) => s.setActiveTab);
+  const moveTab = useSessionStore((s) => s.moveTab);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { onPointerDown, overId, draggingId, consumeDragClick } = useTabDrag(moveTab);
 
   // Keep the active tab in view (e.g. after opening the 25th tab).
   useEffect(() => {
@@ -46,12 +122,31 @@ export function TabBar({ onNewSession }: TabBarProps) {
   }, [activeTabId, tabs.length]);
 
   return (
-    <div className="bg-sidebar border-sidebar-border flex h-10 shrink-0 items-end border-b pl-2">
+    <div
+      role="tablist"
+      aria-label="Open sessions"
+      className="bg-sidebar border-sidebar-border flex h-10 shrink-0 items-end border-b pl-2"
+    >
+      <div
+        role="tab"
+        data-tab-id={HOME_TAB}
+        aria-selected={activeTabId === HOME_TAB}
+        tabIndex={0}
+        onClick={() => {
+          setActiveTab(HOME_TAB);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") setActiveTab(HOME_TAB);
+        }}
+        className={tabClass(activeTabId === HOME_TAB)}
+      >
+        <Home className="text-brand size-3.5" />
+        Home
+      </div>
+
       <div
         ref={scrollRef}
-        role="tablist"
-        aria-label="Open sessions"
-        className="flex min-w-0 [scrollbar-width:thin] items-end gap-1 overflow-x-auto"
+        className="ml-1 flex min-w-0 [scrollbar-width:none] items-end gap-1 overflow-x-auto [&::-webkit-scrollbar]:hidden"
         onWheel={(e) => {
           // Vertical mouse wheel scrolls the tab strip horizontally.
           if (scrollRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
@@ -59,25 +154,16 @@ export function TabBar({ onNewSession }: TabBarProps) {
           }
         }}
       >
-        <div
-          role="tab"
-          data-tab-id={HOME_TAB}
-          aria-selected={activeTabId === HOME_TAB}
-          tabIndex={0}
-          onClick={() => {
-            setActiveTab(HOME_TAB);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") setActiveTab(HOME_TAB);
-          }}
-          className={tabClass(activeTabId === HOME_TAB)}
-        >
-          <Home className="text-brand size-3.5" />
-          Home
-        </div>
-
         {tabs.map((tab) => (
-          <SessionTabItem key={tab.id} tab={tab} active={activeTabId === tab.id} />
+          <SessionTabItem
+            key={tab.id}
+            tab={tab}
+            active={activeTabId === tab.id}
+            dropTarget={overId === tab.id}
+            dragging={draggingId === tab.id}
+            onPointerDown={onPointerDown(tab.id)}
+            consumeDragClick={consumeDragClick}
+          />
         ))}
       </div>
 
@@ -106,7 +192,23 @@ function tabClass(active: boolean): string {
   );
 }
 
-function SessionTabItem({ tab, active }: { tab: SessionTab; active: boolean }) {
+interface SessionTabItemProps {
+  tab: SessionTab;
+  active: boolean;
+  dropTarget: boolean;
+  dragging: boolean;
+  onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
+  consumeDragClick: () => boolean;
+}
+
+function SessionTabItem({
+  tab,
+  active,
+  dropTarget,
+  dragging,
+  onPointerDown,
+  consumeDragClick,
+}: SessionTabItemProps) {
   const setActiveTab = useSessionStore((s) => s.setActiveTab);
   const closeTab = useSessionStore((s) => s.closeTab);
   const closeOtherTabs = useSessionStore((s) => s.closeOtherTabs);
@@ -114,11 +216,9 @@ function SessionTabItem({ tab, active }: { tab: SessionTab; active: boolean }) {
   const reconnect = useSessionStore((s) => s.reconnect);
   const disconnect = useSessionStore((s) => s.disconnect);
   const renameTab = useSessionStore((s) => s.renameTab);
-  const moveTab = useSessionStore((s) => s.moveTab);
   const tabCount = useSessionStore((s) => s.tabs.length);
 
   const [editing, setEditing] = useState(false);
-  const [dropTarget, setDropTarget] = useState(false);
   const title = tabTitle(tab);
   const canReconnect = tab.state === "closed" && tab.connectionId !== null;
 
@@ -131,8 +231,9 @@ function SessionTabItem({ tab, active }: { tab: SessionTab; active: boolean }) {
           aria-selected={active}
           tabIndex={0}
           title={`${tab.username}@${tab.host}:${tab.port}`}
-          draggable={!editing}
+          onPointerDown={editing ? undefined : onPointerDown}
           onClick={() => {
+            if (consumeDragClick()) return;
             setActiveTab(tab.id);
           }}
           onDoubleClick={() => {
@@ -146,28 +247,12 @@ function SessionTabItem({ tab, active }: { tab: SessionTab; active: boolean }) {
             if (e.key === "Enter") setActiveTab(tab.id);
             if (e.key === "F2") setEditing(true);
           }}
-          onDragStart={(e) => {
-            e.dataTransfer.setData(TAB_DRAG_TYPE, tab.id);
-            e.dataTransfer.effectAllowed = "move";
-          }}
-          onDragOver={(e) => {
-            if (e.dataTransfer.types.includes(TAB_DRAG_TYPE)) {
-              e.preventDefault();
-              setDropTarget(true);
-            }
-          }}
-          onDragLeave={() => {
-            setDropTarget(false);
-          }}
-          onDrop={(e) => {
-            setDropTarget(false);
-            const draggedId = e.dataTransfer.getData(TAB_DRAG_TYPE);
-            if (draggedId) {
-              e.preventDefault();
-              moveTab(draggedId, tab.id);
-            }
-          }}
-          className={cn(tabClass(active), "max-w-60", dropTarget && "ring-brand ring-2 ring-inset")}
+          className={cn(
+            tabClass(active),
+            "max-w-60",
+            dropTarget && "ring-brand ring-2 ring-inset",
+            dragging && "opacity-60",
+          )}
         >
           <StateIcon state={tab.state} />
           {editing ? (

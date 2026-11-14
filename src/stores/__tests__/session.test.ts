@@ -122,6 +122,15 @@ describe("tabs", () => {
     expect(store().activeTabId).toBe(HOME_TAB);
   });
 
+  it("closeOtherTabs keeps only the given tab", async () => {
+    for (let i = 0; i < 4; i++) await store().connect(form);
+    const keep = store().tabs[1]!;
+    await store().closeOtherTabs(keep.id);
+    expect(store().tabs.map((t) => t.id)).toEqual([keep.id]);
+    expect(ipc.sshForget).toHaveBeenCalledTimes(3);
+    expect(store().activeTabId).toBe(keep.id);
+  });
+
   it("100 open/close cycles leave nothing behind", async () => {
     for (let i = 0; i < 100; i++) {
       await store().connect(form);
