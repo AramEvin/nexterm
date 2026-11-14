@@ -70,7 +70,8 @@ export function QuickConnectDialog({ open, onOpenChange }: QuickConnectDialogPro
         className="sm:max-w-md"
         onCloseAutoFocus={(e) => {
           // Radix would refocus the "Quick connect" button; send keys to the terminal instead.
-          const session = useSessionStore.getState().session;
+          const { tabs, activeTabId } = useSessionStore.getState();
+          const session = tabs.find((t) => t.id === activeTabId);
           if (session) {
             e.preventDefault();
             session.controller.focus();

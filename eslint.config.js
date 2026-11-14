@@ -36,6 +36,14 @@ export default tseslint.config(
     },
   },
   {
+    // Tests may assert on known-present values (same policy as unwrap() in Rust tests).
+    files: ["src/**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-extraneous-class": "off",
+    },
+  },
+  {
     files: ["src/lib/ipc.ts"],
     rules: { "no-restricted-imports": "off" },
   },

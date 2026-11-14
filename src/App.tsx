@@ -7,14 +7,14 @@ import { WelcomePane } from "@/components/layout/WelcomePane";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { TerminalView } from "@/components/terminal/TerminalView";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useSessionStore } from "@/stores/session";
+import { HOME_TAB, useSessionStore } from "@/stores/session";
 import { useUiStore } from "@/stores/ui";
 
 /** Application shell: sidebar | (tabs + content) / status bar. */
 export default function App() {
   const loadAppInfo = useUiStore((s) => s.loadAppInfo);
-  const session = useSessionStore((s) => s.session);
-  const activeTab = useSessionStore((s) => s.activeTab);
+  const tabs = useSessionStore((s) => s.tabs);
+  const activeTabId = useSessionStore((s) => s.activeTabId);
   const [quickConnectOpen, setQuickConnectOpen] = useState(false);
 
   useEffect(() => {
@@ -33,14 +33,10 @@ export default function App() {
           <main className="flex min-w-0 flex-1 flex-col">
             <TabBar onNewSession={openQuickConnect} />
             <div className="bg-background min-h-0 flex-1">
-              {activeTab === "home" && <WelcomePane onQuickConnect={openQuickConnect} />}
-              {session && (
-                <TerminalView
-                  key={session.id}
-                  session={session}
-                  visible={activeTab === "session"}
-                />
-              )}
+              {activeTabId === HOME_TAB && <WelcomePane onQuickConnect={openQuickConnect} />}
+              {tabs.map((tab) => (
+                <TerminalView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
+              ))}
             </div>
           </main>
         </div>
