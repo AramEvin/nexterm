@@ -5,6 +5,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-14 — Phase 3: session manager
+
+### Added
+
+- SQLite storage (`%APPDATA%\NexTerm\nexterm.db`) with versioned migrations; refuses a
+  database from a newer version instead of touching it.
+- Saved sessions: name, protocol, host, port, username, folder, colour, tags, notes, favourite;
+  last-connected time.
+- Nested folders (max 12 levels) with recursive session counts; deleting a folder deletes its
+  contents after a confirmation that states how many sessions are affected.
+- Sidebar library: favourites section, expand/collapse (remembered), drag & drop of sessions and
+  folders, one shared right-click menu (connect, edit, duplicate, favourite, delete; new session,
+  new subfolder, rename, delete folder), inline folder rename, keyboard (Enter, F2, Delete).
+- Search by name, host, username, folder path or tag; `tag:` prefix; results grouped by folder.
+- Session editor dialog; connect dialog for saved sessions asks only for the password.
+- Quick connect: "Save to sessions" (host, port, user only).
+- Tabs opened from a saved session use its name and show its colour.
+- 12 IPC commands for the library, each granted explicitly in the capability file.
+- Tests: 24 Rust storage tests (migrations, CRUD, cascade, cycles, depth, ordering, 2,000-row
+  listing), 11 Vitest tests for tree building and search (1,000 sessions searched in under 50 ms).
+
+### Fixed
+
+- Native form controls (dropdowns, checkboxes) now follow the dark theme (`color-scheme`).
+- Dragging tabs or tree rows no longer paints a text selection.
+
+### Security
+
+- No secrets in the database; `secure_delete` on; all inputs validated in Rust; parameterised
+  SQL. See SECURITY.md §4a.
+
 ## [0.3.0] - 2026-11-14 — Phase 2: tabs and multiple sessions
 
 ### Added

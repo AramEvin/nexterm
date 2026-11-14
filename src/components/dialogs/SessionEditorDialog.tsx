@@ -30,7 +30,7 @@ const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
 ];
 
 const selectClass =
-  "border-input dark:bg-input/30 h-9 w-full rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]";
+  "border-input bg-background dark:bg-input/30 h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]";
 
 function blankInput(folderId: string | null): SessionInput {
   return {

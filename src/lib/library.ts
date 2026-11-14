@@ -108,7 +108,8 @@ export function searchText(session: SavedSession, path: string): string {
 
 /**
  * Every whitespace-separated term must match somewhere (name, host, user,
- * folder path or a tag). `tag:x` matches tags only. Results keep tree order.
+ * folder path or a tag). `tag:x` matches tags only. Results are grouped by
+ * folder path, then by their order inside the folder.
  */
 export function searchSessions(
   index: LibraryIndex,
@@ -117,8 +118,18 @@ export function searchSessions(
 ): SavedSession[] {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
-  return sessions.filter((s) => {
-    const text = searchText(s, folderPath(index, s.folderId));
+  const paths = new Map<string, string>();
+  const pathOf = (folderId: string | null) => {
+    const key = folderId ?? "";
+    let p = paths.get(key);
+    if (p === undefined) {
+      p = folderPath(index, folderId);
+      paths.set(key, p);
+    }
+    return p;
+  };
+  const hits = sessions.filter((s) => {
+    const text = searchText(s, pathOf(s.folderId));
     const tags = s.tags.map((t) => t.toLowerCase());
     return terms.every((term) =>
       term.startsWith("tag:") && term.length > 4
@@ -126,6 +137,12 @@ export function searchSessions(
         : text.includes(term),
     );
   });
+  return hits.sort(
+    (a, b) =>
+      pathOf(a.folderId).localeCompare(pathOf(b.folderId)) ||
+      a.sortOrder - b.sortOrder ||
+      a.name.localeCompare(b.name, undefined, { numeric: true }),
+  );
 }
 
 /** Parse "prod, db  ,web" into ["prod", "db", "web"]. */

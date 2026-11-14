@@ -90,6 +90,26 @@ later phases must implement. They are requirements, not current behaviour.
     the app is open". Phase 4 replaces it with a vault `credential_id`, and the vault
     auto-lock then bounds the exposure.
 
+## 4a. Session database (Phase 3)
+
+- `%APPDATA%\NexTerm\nexterm.db`, inside the user profile (Windows ACLs limit it
+  to that user).
+- **Contains no secrets:** host, port, username, folder, tags, colour and notes
+  only. Passwords and keys go to the vault in Phase 4; sessions will reference
+  them by `credential_id`. Phase 4 adds a test that greps the database file for
+  test secrets.
+- Quick connect's "Save to sessions" saves host, port and user only, never the
+  password.
+- `PRAGMA secure_delete = ON`, so deleted rows are overwritten instead of lingering in
+  free pages. Foreign keys are enforced.
+- **Input validation in Rust** for every field. Ids must be UUIDs, colours
+  `#rrggbb`, and hosts/ports pass the same validators as connections. Length
+  limits apply to names, notes and tags. All SQL is parameterised; the only
+  `format!`ed SQL uses compile-time table and column names.
+- Folder moves reject cycles (into itself or a descendant) and cap nesting depth.
+- **Note:** session notes are stored in plaintext. Don't put secrets in notes;
+  that's what the vault is for.
+
 ## 5. Vault crypto design _(planned, Phase 4)_
 
 - **KDF:** Argon2id, memory ≥ 64 MiB, iterations ≥ 3, parallelism 1–4, random

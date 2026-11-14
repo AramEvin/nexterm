@@ -3,7 +3,7 @@
 A free, open-source, security-focused SSH & SFTP client for Windows (Linux/macOS
 later): a modern alternative to MobaXterm.
 
-> **Status: Phase 2.** Multiple SSH sessions in tabs (password auth).
+> **Status: Phase 3.** Saved sessions with folders, tags and search; multiple SSH sessions in tabs.
 > Host keys are **not verified** until Phase 4: only use it on networks you trust.
 
 ## Planned v1 features
@@ -18,6 +18,14 @@ later): a modern alternative to MobaXterm.
 - MSI/NSIS installers with signed auto-update
 
 ## Current features
+
+**Phase 3: saved sessions**
+
+- Sidebar library: nested folders, saved sessions (name, host, port, username, colour, tags, notes), favourites
+- Drag sessions and folders between folders; right-click menus; double-click or Enter to connect
+- Instant search by name, host, user, folder or tag (`tag:prod` for tags only); handles thousands of sessions
+- Quick connect can save the server to the library (without the password)
+- Stored locally in SQLite (`%APPDATA%\NexTerm\nexterm.db`); passwords are **not** saved until the vault (Phase 4)
 
 **Phase 2: tabs**
 

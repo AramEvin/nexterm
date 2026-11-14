@@ -9,6 +9,8 @@
  * Tailwind theme mapping below, so switching themes = swapping variables.
  */
 :root {
+  /* Native controls (select popups, checkboxes, scrollbars) follow the theme. */
+  color-scheme: light;
   --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -39,6 +41,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.17 0.005 260);
   --foreground: oklch(0.95 0 0);
   --card: oklch(0.205 0.005 260);

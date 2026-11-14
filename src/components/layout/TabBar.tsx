@@ -69,6 +69,7 @@ function useTabDrag(moveTab: (tabId: string, targetId: string) => void) {
         d.active = true;
         setDraggingId(d.tabId);
       }
+      document.getSelection()?.removeAllRanges();
       const over = tabIdAt(e.clientX, e.clientY);
       const target = over !== d.tabId ? over : null;
       if (target !== d.overId) {

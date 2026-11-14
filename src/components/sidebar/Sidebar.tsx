@@ -79,7 +79,7 @@ export function Sidebar() {
             <div className="bg-background/60 focus-within:border-ring flex h-8 items-center gap-2 rounded-md border px-2">
               <Search className="text-muted-foreground size-3.5 shrink-0" />
               <input
-                type="search"
+                type="text"
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);

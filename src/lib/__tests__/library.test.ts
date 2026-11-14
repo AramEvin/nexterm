@@ -105,17 +105,22 @@ describe("tree", () => {
 describe("search", () => {
   const names = (q: string) => searchSessions(index, sessions, q).map((s) => s.name);
 
+  it("groups results by folder path (root first)", () => {
+    // db-01 lives in "Prod", web-01 in "Prod / Web".
+    expect(names("01")).toEqual(["db-01", "web-01"]);
+  });
+
   it("matches name, host, user, folder path and tags", () => {
     expect(names("web")).toEqual(["web-01", "web-02"]); // name/host/folder
     expect(names("192.168")).toEqual(["pi"]); // host
     expect(names("dba")).toEqual(["db-01"]); // username
     expect(names("postgres")).toEqual(["db-01"]); // tag
-    expect(names("prod")).toEqual(["web-01", "web-02", "db-01"]); // folder path
+    expect(names("prod")).toEqual(["db-01", "web-01", "web-02"]); // folder path, grouped
   });
 
   it("all terms must match; tag: restricts to tags; case-insensitive", () => {
     expect(names("EU nginx")).toEqual(["web-01"]);
-    expect(names("tag:eu")).toEqual(["web-01", "db-01"]);
+    expect(names("tag:eu")).toEqual(["db-01", "web-01"]);
     expect(names("tag:root")).toEqual([]); // 'root' is a username, not a tag
     expect(names("   ")).toEqual([]);
   });

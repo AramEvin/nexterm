@@ -84,10 +84,29 @@ deny-by-default model working.
 | `src/lib/ipc.ts`           | Typed IPC wrappers                                |
 | `src/types/`               | TS mirrors of Rust DTOs                           |
 
+## Saved sessions (Phase 3)
+
+- **Storage:** SQLite (`rusqlite`, bundled), one file per user. Schema in
+  `src-tauri/migrations/NNNN_*.sql`, applied in order inside a transaction and
+  tracked with `PRAGMA user_version`. A database from a newer NexTerm is refused
+  rather than modified.
+- **Tables:** `folders` (nested via `parent_id`, cascade delete), `sessions`
+  (with `protocol`, `options` JSON, `credential_id` for Phase 4, `jump_host_id`
+  for Phase 7), `session_tags`, `settings`.
+- **Rust:** `storage::{folders, sessions}` are plain functions over a
+  `Connection`. Commands run them on the blocking pool (`Database::run`). If the
+  file can't be opened, the app still starts and the sidebar shows the error.
+- **Frontend:** `stores/library.ts` keeps a copy of everything. Every mutation goes
+  to Rust and then reloads, so the UI never shows state the database doesn't have.
+  Tree building and search are pure functions in `lib/library.ts`, filtered in
+  memory and deferred (`useDeferredValue`), which keeps typing instant with
+  thousands of sessions. The tree uses one shared context menu, and search renders
+  at most 300 rows.
+
 ## Data locations (Windows)
 
-| What               | Where                                                    |
-| ------------------ | -------------------------------------------------------- |
-| Logs               | `%APPDATA%\NexTerm\logs` (daily rotation, 14 files kept) |
-| Database (Phase 3) | app data dir, decided in Phase 3                         |
-| WebView2 profile   | `%LOCALAPPDATA%\com.nexterm.app` (managed by Tauri)      |
+| What             | Where                                                    |
+| ---------------- | -------------------------------------------------------- |
+| Logs             | `%APPDATA%\NexTerm\logs` (daily rotation, 14 files kept) |
+| Database         | `%APPDATA%\NexTerm\nexterm.db` (SQLite, WAL mode)        |
+| WebView2 profile | `%LOCALAPPDATA%\com.nexterm.app` (managed by Tauri)      |
