@@ -15,6 +15,7 @@ import type {
   SshConnectRequest,
   SshSessionInfo,
 } from "@/types/ipc";
+import type { Folder, Library, MoveRequest, SavedSession, SessionInput } from "@/types/library";
 
 /** Error thrown by every IPC wrapper. `code` mirrors the Rust `AppError` code. */
 export class IpcError extends Error {
@@ -133,4 +134,55 @@ export function sshResize(sessionId: string, cols: number, rows: number): Promis
 
 export function sshDisconnect(sessionId: string): Promise<void> {
   return call<undefined>("ssh_disconnect", { sessionId });
+}
+
+// ---- library (saved sessions & folders) -----------------------------------
+
+export function libraryList(): Promise<Library> {
+  return call<Library>("library_list");
+}
+
+export function folderCreate(parentId: string | null, name: string): Promise<Folder> {
+  return call<Folder>("folder_create", { parentId, name });
+}
+
+export function folderRename(id: string, name: string): Promise<Folder> {
+  return call<Folder>("folder_rename", { id, name });
+}
+
+export function folderMove(request: MoveRequest): Promise<void> {
+  return call<undefined>("folder_move", { request });
+}
+
+/** Resolves with the number of sessions deleted with the folder. */
+export function folderDelete(id: string): Promise<number> {
+  return call<number>("folder_delete", { id });
+}
+
+export function sessionCreate(input: SessionInput): Promise<SavedSession> {
+  return call<SavedSession>("session_create", { input });
+}
+
+export function sessionUpdate(id: string, input: SessionInput): Promise<SavedSession> {
+  return call<SavedSession>("session_update", { id, input });
+}
+
+export function sessionDelete(id: string): Promise<void> {
+  return call<undefined>("session_delete", { id });
+}
+
+export function sessionDuplicate(id: string): Promise<SavedSession> {
+  return call<SavedSession>("session_duplicate", { id });
+}
+
+export function sessionMove(request: MoveRequest): Promise<void> {
+  return call<undefined>("session_move", { request });
+}
+
+export function sessionSetFavorite(id: string, favorite: boolean): Promise<void> {
+  return call<undefined>("session_set_favorite", { id, favorite });
+}
+
+export function sessionMarkConnected(id: string): Promise<void> {
+  return call<undefined>("session_mark_connected", { id });
 }

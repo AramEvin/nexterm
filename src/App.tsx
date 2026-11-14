@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-import { QuickConnectDialog } from "@/components/dialogs/QuickConnectDialog";
+import { ConfirmDialog } from "@/components/dialogs/ConfirmDialog";
+import { ConnectDialog } from "@/components/dialogs/ConnectDialog";
+import { SessionEditorDialog } from "@/components/dialogs/SessionEditorDialog";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { TabBar } from "@/components/layout/TabBar";
 import { WelcomePane } from "@/components/layout/WelcomePane";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { TerminalView } from "@/components/terminal/TerminalView";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useDialogStore } from "@/stores/dialogs";
+import { useLibraryStore } from "@/stores/library";
 import { HOME_TAB, useSessionStore } from "@/stores/session";
 import { useUiStore } from "@/stores/ui";
 
@@ -15,14 +19,16 @@ export default function App() {
   const loadAppInfo = useUiStore((s) => s.loadAppInfo);
   const tabs = useSessionStore((s) => s.tabs);
   const activeTabId = useSessionStore((s) => s.activeTabId);
-  const [quickConnectOpen, setQuickConnectOpen] = useState(false);
+  const loadLibrary = useLibraryStore((s) => s.load);
+  const openConnect = useDialogStore((s) => s.openConnect);
 
   useEffect(() => {
     void loadAppInfo();
-  }, [loadAppInfo]);
+    void loadLibrary();
+  }, [loadAppInfo, loadLibrary]);
 
   const openQuickConnect = () => {
-    setQuickConnectOpen(true);
+    openConnect({ mode: "quick" });
   };
 
   return (
@@ -42,7 +48,9 @@ export default function App() {
         </div>
         <StatusBar />
       </div>
-      <QuickConnectDialog open={quickConnectOpen} onOpenChange={setQuickConnectOpen} />
+      <ConnectDialog />
+      <SessionEditorDialog />
+      <ConfirmDialog />
     </TooltipProvider>
   );
 }

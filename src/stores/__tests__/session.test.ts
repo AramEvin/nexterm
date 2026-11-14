@@ -94,6 +94,16 @@ describe("tabs", () => {
     ).not.toContain('"pw"');
   });
 
+  it("connect from a saved session sets title, colour and link", async () => {
+    await store().connect(form, { title: "prod-db", color: "#ef4444", savedSessionId: "x" });
+    const tab = store().tabs[0]!;
+    expect(tabTitle(tab)).toBe("prod-db");
+    expect(tab.color).toBe("#ef4444");
+    expect(tab.savedSessionId).toBe("x");
+    await store().duplicate(tab.id);
+    expect(store().tabs[1]!.color).toBe("#ef4444");
+  });
+
   it("failed connect leaves no tab and disposes the terminal", async () => {
     ipc.sshConnect.mockRejectedValueOnce(new Error("auth"));
     await expect(store().connect(form)).rejects.toThrow();

@@ -249,11 +249,18 @@ function SessionTabItem({
           }}
           className={cn(
             tabClass(active),
-            "max-w-60",
+            "relative max-w-60",
             dropTarget && "ring-brand ring-2 ring-inset",
             dragging && "opacity-60",
           )}
         >
+          {tab.color && (
+            <span
+              aria-hidden
+              className="absolute inset-x-2 top-0 h-0.5 rounded-b"
+              style={{ backgroundColor: tab.color }}
+            />
+          )}
           <StateIcon state={tab.state} />
           {editing ? (
             <RenameInput

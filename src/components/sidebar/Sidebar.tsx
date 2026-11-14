@@ -1,15 +1,23 @@
-import { FolderTree, Plus, Search, Settings } from "lucide-react";
+import { FolderPlus, FolderTree, Plus, Search, Settings, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { LibraryTree } from "@/components/sidebar/LibraryTree";
+import { useDialogStore } from "@/stores/dialogs";
+import { useLibraryStore } from "@/stores/library";
 import { useUiStore } from "@/stores/ui";
 
-/** Left panel: activity rail + session tree (tree arrives in Phase 3). */
+/** Left panel: activity rail + saved-session tree. */
 export function Sidebar() {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const query = useLibraryStore((s) => s.query);
+  const setQuery = useLibraryStore((s) => s.setQuery);
+  const libraryError = useLibraryStore((s) => s.error);
+  const openEditor = useDialogStore((s) => s.openEditor);
+  const newFolder = useLibraryStore((s) => s.newFolder);
 
   return (
     <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex h-full shrink-0 border-r">
@@ -27,33 +35,85 @@ export function Sidebar() {
       {/* Session panel */}
       {!collapsed && (
         <section
-          className="border-sidebar-border flex w-64 flex-col border-l"
+          className="border-sidebar-border flex w-72 flex-col border-l"
           aria-label="Sessions"
         >
-          <header className="flex h-10 items-center justify-between px-3">
+          <header className="flex h-10 items-center justify-between pr-1.5 pl-3">
             <span className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
               Sessions
             </span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-sm" disabled aria-label="New session">
-                  <Plus />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>New session (Phase 3)</TooltipContent>
-            </Tooltip>
+            <div className="flex items-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="New folder"
+                    disabled={libraryError !== null}
+                    onClick={() => void newFolder(null)}
+                  >
+                    <FolderPlus />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>New folder</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="New session"
+                    disabled={libraryError !== null}
+                    onClick={() => {
+                      openEditor({ mode: "create", folderId: null });
+                    }}
+                  >
+                    <Plus />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>New session</TooltipContent>
+              </Tooltip>
+            </div>
           </header>
           <div className="px-3 pb-2">
-            <div className="bg-background/60 text-muted-foreground flex h-8 items-center gap-2 rounded-md border px-2 text-sm">
-              <Search className="size-3.5" />
-              <span>Search sessions…</span>
+            <div className="bg-background/60 focus-within:border-ring flex h-8 items-center gap-2 rounded-md border px-2">
+              <Search className="text-muted-foreground size-3.5 shrink-0" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setQuery("");
+                }}
+                placeholder="Search name, host, tag…"
+                aria-label="Search sessions"
+                spellCheck={false}
+                className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setQuery("");
+                  }}
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
           </div>
           <Separator />
-          <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm">
-            <FolderTree className="size-8 opacity-40" />
-            <p>No saved sessions yet.</p>
-          </div>
+          {libraryError ? (
+            <p role="alert" className="text-destructive p-4 text-sm">
+              {libraryError}
+            </p>
+          ) : (
+            <LibraryTree />
+          )}
         </section>
       )}
     </aside>

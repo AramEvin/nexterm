@@ -29,6 +29,10 @@ export interface SessionTab {
   id: string;
   /** User-chosen name; `null` means "username@host". */
   customTitle: string | null;
+  /** Accent colour from the saved session (`#rrggbb`), if any. */
+  color: string | null;
+  /** Saved session this tab was opened from, if any. */
+  savedSessionId: string | null;
   host: string;
   port: number;
   username: string;
@@ -46,6 +50,13 @@ export interface ConnectForm {
   password: string;
 }
 
+/** Optional presentation details when connecting from a saved session. */
+export interface ConnectMeta {
+  title?: string | null;
+  color?: string | null;
+  savedSessionId?: string | null;
+}
+
 export const HOME_TAB = "home";
 
 interface SessionState {
@@ -57,7 +68,7 @@ interface SessionState {
 
   setActiveTab: (id: string) => void;
   /** New tab. Resolves on success; throws `IpcError` (user-facing message) on failure. */
-  connect: (form: ConnectForm) => Promise<void>;
+  connect: (form: ConnectForm, meta?: ConnectMeta) => Promise<void>;
   reconnect: (tabId: string) => Promise<void>;
   duplicate: (tabId: string) => Promise<void>;
   disconnect: (tabId: string) => Promise<void>;
@@ -139,7 +150,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       if (id === HOME_TAB || findTab(id)) set({ activeTabId: id });
     },
 
-    connect: async ({ host, port, username, password }) => {
+    connect: async ({ host, port, username, password }, meta = {}) => {
       set({ connecting: true });
       const id = crypto.randomUUID();
       const controller = new TerminalController();
@@ -155,7 +166,9 @@ export const useSessionStore = create<SessionState>()((set, get) => {
             ...s.tabs,
             {
               id,
-              customTitle: null,
+              customTitle: meta.title ?? null,
+              color: meta.color ?? null,
+              savedSessionId: meta.savedSessionId ?? null,
               host,
               port,
               username,
@@ -208,6 +221,8 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       const newTab: SessionTab = {
         id,
         customTitle: source.customTitle,
+        color: source.color,
+        savedSessionId: source.savedSessionId,
         host: source.host,
         port: source.port,
         username: source.username,
