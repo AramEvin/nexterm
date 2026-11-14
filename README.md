@@ -3,7 +3,7 @@
 A free, open-source, security-focused SSH & SFTP client for Windows (Linux/macOS
 later): a modern alternative to MobaXterm.
 
-> **Status: Phase 1.** Quick connect opens a real SSH terminal (password auth, one session at a time).
+> **Status: Phase 2.** Multiple SSH sessions in tabs (password auth).
 > Host keys are **not verified** until Phase 4: only use it on networks you trust.
 
 ## Planned v1 features
@@ -18,6 +18,14 @@ later): a modern alternative to MobaXterm.
 - MSI/NSIS installers with signed auto-update
 
 ## Current features
+
+**Phase 2: tabs**
+
+- Any number of sessions, one per tab; closing or crashing one never affects the others
+- Rename (double-click / F2 / right-click), drag to reorder, middle-click to close
+- Right-click menu: Rename, Duplicate session, Reconnect / Disconnect, Close, Close other tabs
+- **Reconnect** and **Duplicate** reuse the login without retyping the password (kept in Rust memory only, wiped when the tab closes)
+- Status bar: host, user and state of the active tab; connected/open tab count
 
 **Phase 1: SSH terminal**
 

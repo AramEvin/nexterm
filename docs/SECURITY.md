@@ -63,7 +63,7 @@ later phases must implement. They are requirements, not current behaviour.
 - **No remote content:** the UI is served from bundled assets; no CDN fonts or scripts.
 - `unsafe_code = "forbid"` in the Rust crate.
 
-## 4. Password handling in Phase 1 (quick connect)
+## 4. Password handling in Phases 1–3 (quick connect)
 
 - The password is typed into the quick-connect dialog and sent once, in the
   `ssh_connect` request. It is **not** kept in any frontend store; the input field
@@ -75,6 +75,20 @@ later phases must implement. They are requirements, not current behaviour.
   short-lived copy that is not zeroized. The JS string in the webview is likewise
   garbage-collected, not wiped. Phase 4 moves stored credentials into the vault so
   saved passwords never pass through the frontend.
+- **Reconnect / Duplicate (Phase 2):** after a successful login, Rust keeps the
+  connection parameters for that tab (`ssh::SshConnections`, password as
+  `SecretString`) so the user doesn't retype the password. The frontend only holds
+  an opaque random `connectionId`.
+  - Lifetime: until the tab is closed (`ssh_forget`) or the app exits. Never
+    written to disk, never sent back to the frontend.
+  - A failed login is never remembered.
+  - Capped at 256 entries, so a buggy or hostile frontend can't grow it without limit.
+  - Every copy of a password is an explicit `duplicate()` call (`SecretString` is not
+    `Clone`), so copies are visible in code review.
+  - Residual risk: while a tab is open, its password sits in process memory. That
+    matches the existing out-of-scope item "malware running as the same user while
+    the app is open". Phase 4 replaces it with a vault `credential_id`, and the vault
+    auto-lock then bounds the exposure.
 
 ## 5. Vault crypto design _(planned, Phase 4)_
 

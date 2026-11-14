@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-14 — Phase 2: tabs and multiple sessions
+
+### Added
+
+- Multiple SSH sessions, one per tab, each in its own backend task.
+- Tab actions: rename (double-click, F2, context menu), drag to reorder, middle-click close,
+  duplicate session, reconnect, disconnect, close, close other tabs.
+- Reconnect keeps the tab and its scrollback; Duplicate opens next to the source tab.
+- Status bar shows the active tab's user@host:port and state, plus connected/open tab count.
+- IPC: `ssh_reconnect`, `ssh_duplicate`, `ssh_forget`; `ssh_connect` now also returns a
+  `connectionId`.
+- Vitest unit tests for the tab store (lifecycle, cleanup, stale status, reorder, rename).
+- Integration test: 20 concurrent sessions, closing one leaves 19 working, registry empty after
+  repeated open/close.
+
+### Changed
+
+- WebGL renderer is attached only to the visible terminal (Chromium caps live WebGL contexts at
+  about 16); hidden tabs use the DOM renderer.
+- Home tab is pinned; session tabs scroll horizontally (mouse wheel) when they don't fit.
+
+### Fixed
+
+- Tab reordering uses pointer events: HTML5 drag-and-drop does not work inside the webview on
+  Windows while Tauri's native file drop is enabled (needed for SFTP in Phase 5).
+
+### Security
+
+- Connection parameters (incl. password) for open tabs are kept in Rust memory as
+  `SecretString` to support Reconnect/Duplicate; wiped when the tab closes, never written to
+  disk, capped at 256 entries. See SECURITY.md §4.
+
 ## [0.2.0] - 2026-11-13 — Phase 1: first SSH terminal
 
 ### Added

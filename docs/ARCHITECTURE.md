@@ -44,6 +44,21 @@ commands that are explicitly granted in `src-tauri/capabilities/`.
 7. **Protocols:** SSH is the first implementation behind the protocol boundary in
    `session/protocol.rs` (see ADR 0002).
 
+## Tabs and sessions (Phase 2)
+
+| Concept                                   | Lives in                   | Lifetime                                |
+| ----------------------------------------- | -------------------------- | --------------------------------------- |
+| Tab (`SessionTab`)                        | `src/stores/session.ts`    | Until the user closes it                |
+| `TerminalController` (xterm + scrollback) | one per tab                | Same as the tab; survives reconnects    |
+| `connectionId` → params incl. password    | Rust `ssh::SshConnections` | Same as the tab (`ssh_forget` on close) |
+| `sessionId` → live connection             | Rust `SessionManager`      | One connection; new id on reconnect     |
+
+A "closed" status is applied only if it belongs to the tab's _current_ session, so
+a late message from a previous session can't close a fresh reconnect. Only the
+visible terminal holds a WebGL context (Chromium caps live contexts at about 16).
+Tab reordering uses pointer events, because HTML5 drag-and-drop is blocked in
+WebView2 while Tauri's native file drop is on.
+
 ## Adding an IPC command (checklist)
 
 1. Implement it in `src-tauri/src/commands/<area>.rs`, returning `AppResult<T>`.
