@@ -31,5 +31,13 @@ export interface SshConnectRequest {
   rows: number;
 }
 
+/** `commands::ssh::SshSessionInfo` */
+export interface SshSessionInfo {
+  /** The live session; changes on every reconnect. */
+  sessionId: string;
+  /** Opaque handle to connection params kept in Rust; owned by one tab. */
+  connectionId: string;
+}
+
 /** `session::protocol::SessionStatus` */
 export type SessionStatus = { kind: "closed"; reason: string };

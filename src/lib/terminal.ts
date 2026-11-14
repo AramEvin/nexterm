@@ -1,9 +1,11 @@
 /**
- * TerminalController: owns one xterm.js instance for one session.
+ * TerminalController: owns one xterm.js instance for one tab.
  *
  * It lives outside React so the terminal survives re-renders and tab
  * switches, and so output that arrives before the view mounts (login
- * banners) is buffered by xterm itself.
+ * banners) is buffered by xterm itself. A controller outlives individual
+ * sessions: on reconnect the same terminal (and its scrollback) is attached
+ * to the new session id.
  */
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -36,6 +38,10 @@ const THEME: ITheme = {
   brightWhite: "#ffffff",
 };
 
+/** Initial PTY size before the view has measured itself. */
+export const DEFAULT_COLS = 120;
+export const DEFAULT_ROWS = 32;
+
 export type RendererKind = "webgl" | "dom";
 
 export class TerminalController {
@@ -43,11 +49,18 @@ export class TerminalController {
   private readonly fit = new FitAddon();
   private sessionId: string | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private opened = false;
+  private element: HTMLElement | null = null;
+  private webgl: WebglAddon | null = null;
+  private visible = false;
+  private disposed = false;
   private fitFrame = 0;
   /** Input typed while a write is in flight; sent as one batch afterwards. */
   private pendingInput = "";
   private writing = false;
+  private readonly onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    void this.copyOrPaste();
+  };
   renderer: RendererKind = "dom";
 
   constructor() {
@@ -63,56 +76,71 @@ export class TerminalController {
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = "11"; // correct widths for emoji / CJK
     this.term.attachCustomKeyEventHandler((e) => this.handleKey(e));
-  }
 
-  /** Connect this terminal to a live backend session. */
-  attachSession(sessionId: string): void {
-    this.sessionId = sessionId;
+    // Registered once; they act on whichever session is attached right now.
     this.term.onData((data) => {
       this.queueInput(data);
     });
     this.term.onResize(({ cols, rows }) => {
-      void sshResize(sessionId, cols, rows).catch(() => undefined);
+      if (this.sessionId) void sshResize(this.sessionId, cols, rows).catch(() => undefined);
     });
+  }
+
+  /** Current size, used when (re)connecting so the PTY starts at the right size. */
+  get size(): { cols: number; rows: number } {
+    return this.element
+      ? { cols: this.term.cols, rows: this.term.rows }
+      : { cols: DEFAULT_COLS, rows: DEFAULT_ROWS };
+  }
+
+  /** Connect this terminal to a live backend session (first connect or reconnect). */
+  attachSession(sessionId: string): void {
+    this.sessionId = sessionId;
+    this.pendingInput = "";
+    this.term.options.disableStdin = false;
+    this.term.options.cursorBlink = true;
     // Sync the real size now that the backend can receive it.
-    if (this.opened) this.scheduleFit();
+    if (this.element) {
+      this.scheduleFit();
+      void sshResize(sessionId, this.term.cols, this.term.rows).catch(() => undefined);
+    }
   }
 
   /** Stop sending input (the session ended) but keep the scrollback visible. */
   detachSession(): void {
     this.sessionId = null;
+    this.pendingInput = "";
     this.term.options.disableStdin = true;
     this.term.options.cursorBlink = false;
   }
 
   /** Mount into a DOM element. Called once per controller. */
   open(element: HTMLElement): void {
-    if (this.opened) return;
-    this.opened = true;
+    if (this.element || this.disposed) return;
+    this.element = element;
     this.term.open(element);
-
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => {
-        webgl.dispose(); // falls back to the DOM renderer
-        this.renderer = "dom";
-      });
-      this.term.loadAddon(webgl);
-      this.renderer = "webgl";
-    } catch {
-      this.renderer = "dom"; // WebGL unavailable (old GPU / RDP / VM)
-    }
-
-    element.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      void this.copyOrPaste();
-    });
+    element.addEventListener("contextmenu", this.onContextMenu);
 
     this.resizeObserver = new ResizeObserver(() => {
       this.scheduleFit();
     });
     this.resizeObserver.observe(element);
+    this.syncRenderer();
     this.scheduleFit();
+  }
+
+  /**
+   * Chromium allows only ~16 live WebGL contexts per page, so with many tabs
+   * only the visible terminal holds one. Hidden tabs fall back to the DOM
+   * renderer, which costs nothing while not painting.
+   */
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.syncRenderer();
+    if (visible) {
+      this.scheduleFit();
+      this.term.focus();
+    }
   }
 
   focus(): void {
@@ -125,9 +153,46 @@ export class TerminalController {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.sessionId = null;
     cancelAnimationFrame(this.fitFrame);
     this.resizeObserver?.disconnect();
-    this.term.dispose();
+    this.element?.removeEventListener("contextmenu", this.onContextMenu);
+    this.disposeWebgl();
+    this.term.dispose(); // also disposes the remaining addons
+    this.element = null;
+  }
+
+  private syncRenderer(): void {
+    if (!this.element || this.disposed) return;
+    if (this.visible && !this.webgl) {
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          this.disposeWebgl(); // falls back to the DOM renderer
+        });
+        this.term.loadAddon(webgl);
+        this.webgl = webgl;
+        this.renderer = "webgl";
+      } catch {
+        this.renderer = "dom"; // WebGL unavailable (old GPU / RDP / VM)
+      }
+    } else if (!this.visible && this.webgl) {
+      this.disposeWebgl();
+    }
+  }
+
+  private disposeWebgl(): void {
+    if (!this.webgl) return;
+    const webgl = this.webgl;
+    this.webgl = null;
+    this.renderer = "dom";
+    try {
+      webgl.dispose();
+    } catch {
+      // already torn down with the terminal
+    }
   }
 
   /**
@@ -137,6 +202,7 @@ export class TerminalController {
    * typist or a paste costs a handful of IPC calls instead of hundreds.
    */
   private queueInput(data: string): void {
+    if (!this.sessionId) return;
     this.pendingInput += data;
     if (!this.writing) void this.flushInput();
   }
@@ -162,7 +228,7 @@ export class TerminalController {
     this.fitFrame = requestAnimationFrame(() => {
       const el = this.term.element;
       // Hidden tabs have zero size; fitting then would shrink the PTY to 1x1.
-      if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
+      if (this.disposed || !el || el.clientWidth === 0 || el.clientHeight === 0) return;
       this.fit.fit();
     });
   }

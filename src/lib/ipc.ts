@@ -13,6 +13,7 @@ import type {
   AppInfo,
   SessionStatus,
   SshConnectRequest,
+  SshSessionInfo,
 } from "@/types/ipc";
 
 /** Error thrown by every IPC wrapper. `code` mirrors the Rust `AppError` code. */
@@ -71,16 +72,55 @@ export interface SshSessionCallbacks {
   onStatus: (status: SessionStatus) => void;
 }
 
-/** Connect and start a shell. Resolves with the session id. */
-export function sshConnect(
-  request: SshConnectRequest,
-  callbacks: SshSessionCallbacks,
-): Promise<string> {
+function sessionChannels(callbacks: SshSessionCallbacks) {
   const onOutput = new Channel<unknown>((payload) => {
     callbacks.onOutput(toBytes(payload));
   });
   const onStatus = new Channel<SessionStatus>(callbacks.onStatus);
-  return call<string>("ssh_connect", { request, onOutput, onStatus });
+  return { onOutput, onStatus };
+}
+
+/** Connect and start a shell in a new tab. */
+export function sshConnect(
+  request: SshConnectRequest,
+  callbacks: SshSessionCallbacks,
+): Promise<SshSessionInfo> {
+  return call<SshSessionInfo>("ssh_connect", { request, ...sessionChannels(callbacks) });
+}
+
+/** New session for an existing tab, using the params remembered in Rust. */
+export function sshReconnect(
+  connectionId: string,
+  cols: number,
+  rows: number,
+  callbacks: SshSessionCallbacks,
+): Promise<SshSessionInfo> {
+  return call<SshSessionInfo>("ssh_reconnect", {
+    connectionId,
+    cols,
+    rows,
+    ...sessionChannels(callbacks),
+  });
+}
+
+/** Same connection in a new tab; the result has a new `connectionId`. */
+export function sshDuplicate(
+  connectionId: string,
+  cols: number,
+  rows: number,
+  callbacks: SshSessionCallbacks,
+): Promise<SshSessionInfo> {
+  return call<SshSessionInfo>("ssh_duplicate", {
+    connectionId,
+    cols,
+    rows,
+    ...sessionChannels(callbacks),
+  });
+}
+
+/** Tab closed: wipe the remembered params (incl. password) in Rust. */
+export function sshForget(connectionId: string): Promise<void> {
+  return call<undefined>("ssh_forget", { connectionId });
 }
 
 export function sshWrite(sessionId: string, data: string): Promise<void> {
