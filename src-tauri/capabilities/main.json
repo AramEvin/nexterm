@@ -11,6 +11,9 @@
     "allow-ssh-connect",
     "allow-ssh-write",
     "allow-ssh-resize",
-    "allow-ssh-disconnect"
+    "allow-ssh-disconnect",
+    "allow-ssh-reconnect",
+    "allow-ssh-duplicate",
+    "allow-ssh-forget"
   ]
 }

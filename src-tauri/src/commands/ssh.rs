@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::{Channel, Response};
 use uuid::Uuid;
@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::error::{AppError, AppResult};
 use crate::session::SessionManager;
 use crate::session::protocol::{OutputSink, SessionCommand, SessionStatus, TerminalProtocol};
-use crate::ssh::{SshConnectParams, SshProtocol, validate};
+use crate::ssh::{SshConnectParams, SshConnections, SshProtocol, validate};
 
 /// Largest single `ssh_write` payload (a big paste). 1 MiB.
 const MAX_WRITE_BYTES: usize = 1024 * 1024;
@@ -57,14 +57,50 @@ fn parse_session_id(raw: &str) -> AppResult<Uuid> {
     Uuid::parse_str(raw).map_err(|_| AppError::Validation("Invalid session id.".into()))
 }
 
-/// Connect, authenticate and start a shell. Returns the new session id.
+/// Returned by every command that opens a session.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshSessionInfo {
+    /// The live session (changes on every reconnect).
+    pub session_id: String,
+    /// Opaque handle to the remembered connection parameters; owned by one tab.
+    pub connection_id: String,
+}
+
+fn parse_connection_id(raw: &str) -> AppResult<Uuid> {
+    Uuid::parse_str(raw).map_err(|_| AppError::Validation("Invalid connection id.".into()))
+}
+
+/// Shared by connect / reconnect / duplicate: open the SSH session and
+/// register it with the manager.
+async fn open_session(
+    params: SshConnectParams,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<Response>,
+    on_status: Channel<SessionStatus>,
+    manager: &Arc<SessionManager>,
+) -> AppResult<Uuid> {
+    let size = validate::terminal_size(cols, rows)?;
+    let sink: Arc<dyn OutputSink> = Arc::new(ChannelSink {
+        output: on_output,
+        status: on_status,
+    });
+    let handle = SshProtocol::open(params, size, Arc::clone(&sink)).await?;
+    let id = manager.register(handle, sink).await;
+    tracing::info!(session_id = %id, "session registered");
+    Ok(id)
+}
+
+/// Connect, authenticate and start a shell in a new tab.
 #[tauri::command]
 pub async fn ssh_connect(
     request: SshConnectRequest,
     on_output: Channel<Response>,
     on_status: Channel<SessionStatus>,
     manager: State<'_, Arc<SessionManager>>,
-) -> AppResult<String> {
+    connections: State<'_, SshConnections>,
+) -> AppResult<SshSessionInfo> {
     let params = SshConnectParams {
         host: validate::host(&request.host)?,
         port: validate::port(request.port)?,
@@ -74,16 +110,92 @@ pub async fn ssh_connect(
             request.password
         },
     };
-    let size = validate::terminal_size(request.cols, request.rows)?;
+    let remembered = params.duplicate();
+    let session_id = open_session(
+        params,
+        request.cols,
+        request.rows,
+        on_output,
+        on_status,
+        &manager,
+    )
+    .await?;
+    // Remember the parameters only after a successful login, so a typo'd
+    // password is never kept.
+    let connection_id = match connections.insert(remembered).await {
+        Ok(id) => id,
+        Err(e) => {
+            let _ = manager.send(session_id, SessionCommand::Close).await;
+            return Err(e);
+        }
+    };
+    Ok(SshSessionInfo {
+        session_id: session_id.to_string(),
+        connection_id: connection_id.to_string(),
+    })
+}
 
-    let sink: Arc<dyn OutputSink> = Arc::new(ChannelSink {
-        output: on_output,
-        status: on_status,
-    });
-    let handle = SshProtocol::open(params, size, Arc::clone(&sink)).await?;
-    let id = manager.register(handle, sink).await;
-    tracing::info!(session_id = %id, "session registered");
-    Ok(id.to_string())
+/// Open a new session for an existing tab, reusing its remembered parameters.
+#[tauri::command]
+pub async fn ssh_reconnect(
+    connection_id: String,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<Response>,
+    on_status: Channel<SessionStatus>,
+    manager: State<'_, Arc<SessionManager>>,
+    connections: State<'_, SshConnections>,
+) -> AppResult<SshSessionInfo> {
+    let cid = parse_connection_id(&connection_id)?;
+    let params = connections.get_copy(cid).await?;
+    tracing::info!(connection_id = %cid, "reconnect requested");
+    let session_id = open_session(params, cols, rows, on_output, on_status, &manager).await?;
+    Ok(SshSessionInfo {
+        session_id: session_id.to_string(),
+        connection_id,
+    })
+}
+
+/// Open the same connection in a new tab (gets its own connection id).
+#[tauri::command]
+pub async fn ssh_duplicate(
+    connection_id: String,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<Response>,
+    on_status: Channel<SessionStatus>,
+    manager: State<'_, Arc<SessionManager>>,
+    connections: State<'_, SshConnections>,
+) -> AppResult<SshSessionInfo> {
+    let cid = parse_connection_id(&connection_id)?;
+    let params = connections.get_copy(cid).await?;
+    let remembered = params.duplicate();
+    tracing::info!(source_connection_id = %cid, "duplicate requested");
+    let session_id = open_session(params, cols, rows, on_output, on_status, &manager).await?;
+    let new_id = match connections.insert(remembered).await {
+        Ok(id) => id,
+        Err(e) => {
+            let _ = manager.send(session_id, SessionCommand::Close).await;
+            return Err(e);
+        }
+    };
+    Ok(SshSessionInfo {
+        session_id: session_id.to_string(),
+        connection_id: new_id.to_string(),
+    })
+}
+
+/// The tab was closed: wipe its remembered parameters (password included).
+#[tauri::command]
+pub async fn ssh_forget(
+    connection_id: String,
+    connections: State<'_, SshConnections>,
+) -> AppResult<()> {
+    let cid = parse_connection_id(&connection_id)?;
+    if connections.remove(cid).await {
+        tracing::debug!(connection_id = %cid, "connection parameters forgotten");
+    }
+    Ok(())
 }
 
 /// Send keystrokes / pasted text to a session.

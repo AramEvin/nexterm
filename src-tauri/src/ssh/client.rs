@@ -27,6 +27,8 @@ const COMMAND_QUEUE: usize = 256;
 const TERM_TYPE: &str = "xterm-256color";
 
 /// Parameters for an interactive SSH session. Already validated.
+/// `Debug` is safe: `SecretString` prints as `[REDACTED]`.
+#[derive(Debug)]
 pub struct SshConnectParams {
     pub host: String,
     pub port: u16,

@@ -189,3 +189,118 @@ async fn closed_port_is_connection_refused() {
         err.user_message()
     );
 }
+
+/// Phase 2 acceptance: 20 concurrent sessions through the `SessionManager`;
+/// closing one leaves the others working; repeated open/close leaves nothing
+/// behind in the registry.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs a real SSH server (see module docs)"]
+async fn twenty_sessions_are_independent_and_cleaned_up() {
+    use nexterm_lib::session::SessionManager;
+
+    const N: usize = 20;
+    let manager = SessionManager::new();
+    let size = TerminalSize { cols: 80, rows: 24 };
+    let password = env("NEXTERM_TEST_SSH_PASSWORD");
+
+    // Open in batches of 5: OpenSSH's default `MaxStartups 10:30:100` starts
+    // dropping connections when more than 10 logins are in flight at once.
+    let mut opened = Vec::new();
+    for _ in 0..N / 5 {
+        let batch = (0..5).map(|_| {
+            let sink = Arc::new(CollectSink::default());
+            let params = params(&password);
+            async move {
+                let handle = SshProtocol::open(params, size, sink.clone())
+                    .await
+                    .expect("connect");
+                (handle, sink)
+            }
+        });
+        opened.extend(futures_join_all(batch).await);
+    }
+    let mut sessions = Vec::new();
+    for (handle, sink) in opened {
+        let sink_dyn: Arc<dyn OutputSink> = sink.clone();
+        let id = manager.register(handle, sink_dyn).await;
+        sessions.push((id, sink));
+    }
+    assert_eq!(manager.len().await, N);
+
+    // Close one in the middle.
+    let (closed_id, closed_sink) = &sessions[N / 2];
+    manager
+        .send(*closed_id, SessionCommand::Close)
+        .await
+        .unwrap();
+    for _ in 0..100 {
+        if manager.len().await == N - 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(manager.len().await, N - 1);
+    assert!(!closed_sink.status.lock().unwrap().is_empty());
+
+    // Every other session still answers.
+    for (i, (id, sink)) in sessions.iter().enumerate() {
+        if i == N / 2 {
+            continue;
+        }
+        let cmd = format!("echo ALIVE-$((1000+{i}))\n");
+        manager
+            .send(*id, SessionCommand::Write(cmd.into_bytes()))
+            .await
+            .unwrap();
+        sink.wait_for(&format!("ALIVE-{}", 1000 + i)).await;
+    }
+
+    // Close the rest; the registry must end up empty.
+    for (i, (id, _)) in sessions.iter().enumerate() {
+        if i != N / 2 {
+            manager.send(*id, SessionCommand::Close).await.unwrap();
+        }
+    }
+    for _ in 0..200 {
+        if manager.is_empty().await {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(manager.is_empty().await, "sessions leaked in the registry");
+
+    // Repeated open/close: still nothing left behind.
+    for _ in 0..10 {
+        let sink = Arc::new(CollectSink::default());
+        let handle = SshProtocol::open(params(&password), size, sink.clone())
+            .await
+            .expect("connect");
+        let id = manager.register(handle, sink).await;
+        manager.send(id, SessionCommand::Close).await.unwrap();
+    }
+    for _ in 0..200 {
+        if manager.is_empty().await {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        manager.is_empty().await,
+        "sessions leaked after open/close cycles"
+    );
+}
+
+/// Minimal join_all so the test needs no extra dependency.
+async fn futures_join_all<F: std::future::Future + Send + 'static>(
+    futs: impl Iterator<Item = F>,
+) -> Vec<F::Output>
+where
+    F::Output: Send + 'static,
+{
+    let handles: Vec<_> = futs.map(tokio::spawn).collect();
+    let mut out = Vec::with_capacity(handles.len());
+    for h in handles {
+        out.push(h.await.unwrap());
+    }
+    out
+}

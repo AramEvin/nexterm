@@ -33,6 +33,7 @@ pub fn run() -> anyhow::Result<()> {
             );
             app.manage(guard);
             app.manage(session::SessionManager::new());
+            app.manage(ssh::SshConnections::new());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -41,6 +42,9 @@ pub fn run() -> anyhow::Result<()> {
             commands::ssh::ssh_write,
             commands::ssh::ssh_resize,
             commands::ssh::ssh_disconnect,
+            commands::ssh::ssh_reconnect,
+            commands::ssh::ssh_duplicate,
+            commands::ssh::ssh_forget,
         ])
         .run(tauri::generate_context!())?;
 

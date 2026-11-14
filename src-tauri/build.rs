@@ -9,6 +9,9 @@ fn main() {
             "ssh_write",
             "ssh_resize",
             "ssh_disconnect",
+            "ssh_reconnect",
+            "ssh_duplicate",
+            "ssh_forget",
         ]));
 
     if let Err(err) = tauri_build::try_build(attributes) {
