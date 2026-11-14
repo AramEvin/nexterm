@@ -34,10 +34,28 @@ pub fn run() -> anyhow::Result<()> {
             app.manage(guard);
             app.manage(session::SessionManager::new());
             app.manage(ssh::SshConnections::new());
+            let db_path = storage::db_path(&data_dir);
+            let db = storage::Database::open(&db_path);
+            if db.is_ok() {
+                tracing::info!(path = %db_path.display(), "session database opened");
+            }
+            app.manage(commands::library::LibraryDb::new(db));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app::get_app_info,
+            commands::library::library_list,
+            commands::library::folder_create,
+            commands::library::folder_rename,
+            commands::library::folder_move,
+            commands::library::folder_delete,
+            commands::library::session_create,
+            commands::library::session_update,
+            commands::library::session_delete,
+            commands::library::session_duplicate,
+            commands::library::session_move,
+            commands::library::session_set_favorite,
+            commands::library::session_mark_connected,
             commands::ssh::ssh_connect,
             commands::ssh::ssh_write,
             commands::ssh::ssh_resize,

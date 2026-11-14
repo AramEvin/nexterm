@@ -8,4 +8,5 @@
 //! otherwise the frontend cannot call it (least privilege).
 
 pub mod app;
+pub mod library;
 pub mod ssh;

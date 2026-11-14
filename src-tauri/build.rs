@@ -5,6 +5,18 @@ fn main() {
     let attributes =
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "get_app_info",
+            "library_list",
+            "folder_create",
+            "folder_rename",
+            "folder_move",
+            "folder_delete",
+            "session_create",
+            "session_update",
+            "session_delete",
+            "session_duplicate",
+            "session_move",
+            "session_set_favorite",
+            "session_mark_connected",
             "ssh_connect",
             "ssh_write",
             "ssh_resize",
