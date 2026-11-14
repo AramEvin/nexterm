@@ -70,5 +70,6 @@ major.minor, otherwise the build stops with "version mismatched Tauri packages".
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Security design & threat model](docs/SECURITY.md)
+- [Roadmap](docs/ROADMAP.md)
 - [Architecture decision records](docs/adr/)
 - [Changelog](CHANGELOG.md)
