@@ -41,6 +41,8 @@ pub fn run() -> anyhow::Result<()> {
             app.manage(guard);
             app.manage(session::SessionManager::new());
             app.manage(ssh::SshConnections::new());
+            app.manage(sftp::FileSessions::new());
+            app.manage(Arc::new(sftp::Transfers::new()));
             let db_path = storage::db_path(&data_dir);
             let db = storage::Database::open(&db_path);
             if db.is_ok() {
@@ -119,6 +121,17 @@ pub fn run() -> anyhow::Result<()> {
             commands::vault::folder_set_default_credential,
             commands::vault::known_hosts_list,
             commands::vault::known_hosts_remove,
+            commands::sftp::sftp_open_saved,
+            commands::sftp::sftp_open_connection,
+            commands::sftp::sftp_close,
+            commands::sftp::fs_home,
+            commands::sftp::fs_list,
+            commands::sftp::fs_mkdir,
+            commands::sftp::fs_rename,
+            commands::sftp::fs_delete,
+            commands::sftp::fs_chmod,
+            commands::sftp::transfer_start,
+            commands::sftp::transfer_cancel,
         ])
         .run(tauri::generate_context!())?;
 

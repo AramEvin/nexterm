@@ -7,6 +7,6 @@ pub mod known_hosts;
 pub mod prompt;
 pub mod validate;
 
-pub use client::{Interaction, SshAuth, SshConnectParams, SshProtocol};
+pub use client::{Interaction, SshAuth, SshClient, SshConnectParams, SshProtocol, connect};
 pub use connections::SshConnections;
 pub use prompt::PromptBroker;

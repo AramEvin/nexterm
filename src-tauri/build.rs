@@ -42,6 +42,17 @@ fn main() {
             "folder_set_default_credential",
             "known_hosts_list",
             "known_hosts_remove",
+            "sftp_open_saved",
+            "sftp_open_connection",
+            "sftp_close",
+            "fs_home",
+            "fs_list",
+            "fs_mkdir",
+            "fs_rename",
+            "fs_delete",
+            "fs_chmod",
+            "transfer_start",
+            "transfer_cancel",
         ]));
 
     if let Err(err) = tauri_build::try_build(attributes) {

@@ -2,7 +2,9 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
   "description": "Least-privilege capability for the main NexTerm window. Grant new commands explicitly.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:app:default",
     "core:event:default",
@@ -44,6 +46,17 @@
     "allow-credential-delete",
     "allow-folder-set-default-credential",
     "allow-known-hosts-list",
-    "allow-known-hosts-remove"
+    "allow-known-hosts-remove",
+    "allow-sftp-open-saved",
+    "allow-sftp-open-connection",
+    "allow-sftp-close",
+    "allow-fs-home",
+    "allow-fs-list",
+    "allow-fs-mkdir",
+    "allow-fs-rename",
+    "allow-fs-delete",
+    "allow-fs-chmod",
+    "allow-transfer-start",
+    "allow-transfer-cancel"
   ]
 }

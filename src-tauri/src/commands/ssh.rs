@@ -93,7 +93,7 @@ impl OutputSink for ChannelSink {
     }
 }
 
-struct ChannelPrompts(Channel<SshPrompt>);
+pub(crate) struct ChannelPrompts(pub(crate) Channel<SshPrompt>);
 
 impl PromptSink for ChannelPrompts {
     fn send(&self, prompt: SshPrompt) -> bool {
@@ -122,22 +122,26 @@ pub struct SshSessionInfo {
     pub connection_id: String,
 }
 
-fn parse_connection_id(raw: &str) -> AppResult<Uuid> {
+pub(crate) fn parse_connection_id(raw: &str) -> AppResult<Uuid> {
     Uuid::parse_str(raw).map_err(|_| AppError::Validation("Invalid connection id.".into()))
 }
 
-struct Resolved {
-    host: String,
-    port: u16,
-    username: String,
-    auth: SshAuth,
-    saved_session_id: Option<String>,
+pub(crate) struct Resolved {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: SshAuth,
+    pub saved_session_id: Option<String>,
 }
 
 /// Turn a spec into concrete parameters. For saved sessions this reads the
 /// session, finds its credential (own or inherited from a folder) and
 /// decrypts it with the vault - all inside Rust.
-async fn resolve(spec: ConnectSpec, lib: &LibraryDb, vault: &VaultState) -> AppResult<Resolved> {
+pub(crate) async fn resolve(
+    spec: ConnectSpec,
+    lib: &LibraryDb,
+    vault: &VaultState,
+) -> AppResult<Resolved> {
     let (session_id, typed_user, typed_password) = match spec {
         ConnectSpec::Direct {
             host,

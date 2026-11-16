@@ -9,5 +9,6 @@
 
 pub mod app;
 pub mod library;
+pub mod sftp;
 pub mod ssh;
 pub mod vault;

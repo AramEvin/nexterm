@@ -58,6 +58,11 @@ pub enum AppError {
     #[error("cancelled")]
     Cancelled,
 
+    /// A file-manager operation failed. The message is user-facing: it names
+    /// the item and the reason ("Permission denied: notes.txt"), never secrets.
+    #[error("file operation failed: {0}")]
+    FileOp(String),
+
     /// Filesystem / OS I/O failure. Details are logged, not exposed.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -81,6 +86,7 @@ impl AppError {
             Self::HostKeyRejected => "HOST_KEY_REJECTED",
             Self::CredentialsRequired(_) => "CREDENTIALS_REQUIRED",
             Self::Cancelled => "CANCELLED",
+            Self::FileOp(_) => "FILE",
             Self::Io(_) => "IO",
             Self::Internal(_) => "INTERNAL",
         }
@@ -94,7 +100,9 @@ impl AppError {
             Self::Connection(msg) => msg.clone(),
             Self::VaultLocked => "The vault is locked. Unlock it to use saved credentials.".into(),
             Self::WrongMasterPassword => "Wrong master password.".into(),
-            Self::HostKeyChanged(msg) | Self::CredentialsRequired(msg) => msg.clone(),
+            Self::HostKeyChanged(msg) | Self::CredentialsRequired(msg) | Self::FileOp(msg) => {
+                msg.clone()
+            }
             Self::HostKeyRejected => {
                 "Connection cancelled: the server's host key was not accepted.".into()
             }

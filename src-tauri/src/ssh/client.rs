@@ -126,66 +126,7 @@ impl TerminalProtocol for SshProtocol {
         size: TerminalSize,
         sink: Arc<dyn OutputSink>,
     ) -> AppResult<SessionHandle> {
-        let SshConnectParams {
-            host,
-            port,
-            username,
-            auth,
-            interaction,
-        } = params;
-        tracing::info!(%host, port, %username, auth_method = auth.method_name(), "SSH connecting");
-
-        let config = Arc::new(client::Config {
-            keepalive_interval: Some(KEEPALIVE_INTERVAL),
-            keepalive_max: KEEPALIVE_MAX_MISSED,
-            nodelay: true,
-            ..Default::default()
-        });
-        let outcome = Arc::new(Mutex::new(None));
-        let handler = ClientHandler {
-            host: host.clone(),
-            port,
-            interaction: interaction.clone(),
-            outcome: Arc::clone(&outcome),
-        };
-
-        // The connect timeout covers TCP + key exchange, not the time the user
-        // spends reading a host-key prompt (that has its own timeout).
-        let connected = tokio::time::timeout(
-            CONNECT_TIMEOUT + PROMPT_TIMEOUT,
-            client::connect(config, (host.as_str(), port), handler),
-        )
-        .await;
-        let take_outcome = || {
-            outcome
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .take()
-        };
-        let mut handle = match connected {
-            Err(_) => {
-                return Err(AppError::Connection(format!(
-                    "Timed out connecting to {host}:{port}."
-                )));
-            }
-            Ok(Err(e)) => {
-                // A host-key decision explains the failure better than russh's error.
-                return Err(take_outcome().unwrap_or_else(|| connect_error(&e, &host, port)));
-            }
-            Ok(Ok(h)) => h,
-        };
-
-        let method = auth.method_name();
-        match authenticate(&mut handle, &host, &username, auth, &interaction).await {
-            Ok(()) => {
-                tracing::info!(%host, port, %username, auth_method = method, "SSH authenticated")
-            }
-            Err(e) => {
-                tracing::warn!(%host, port, %username, auth_method = method, code = e.code(), "SSH authentication failed");
-                let _ = handle.disconnect(Disconnect::ByApplication, "", "en").await;
-                return Err(e);
-            }
-        }
+        let SshClient { handle, host, port } = connect(params).await?;
 
         let channel = open_shell(&handle, size)
             .await
@@ -205,6 +146,79 @@ impl TerminalProtocol for SshProtocol {
             task,
         })
     }
+}
+
+/// An authenticated SSH connection, ready for channels (shell, SFTP, exec).
+pub struct SshClient {
+    pub handle: Handle<ClientHandler>,
+    pub host: String,
+    pub port: u16,
+}
+
+/// TCP connect -> key exchange -> host-key verification -> authentication.
+/// Shared by terminal sessions and the file manager.
+pub async fn connect(params: SshConnectParams) -> AppResult<SshClient> {
+    let SshConnectParams {
+        host,
+        port,
+        username,
+        auth,
+        interaction,
+    } = params;
+    tracing::info!(%host, port, %username, auth_method = auth.method_name(), "SSH connecting");
+
+    let config = Arc::new(client::Config {
+        keepalive_interval: Some(KEEPALIVE_INTERVAL),
+        keepalive_max: KEEPALIVE_MAX_MISSED,
+        nodelay: true,
+        ..Default::default()
+    });
+    let outcome = Arc::new(Mutex::new(None));
+    let handler = ClientHandler {
+        host: host.clone(),
+        port,
+        interaction: interaction.clone(),
+        outcome: Arc::clone(&outcome),
+    };
+
+    // The connect timeout covers TCP + key exchange, not the time the user
+    // spends reading a host-key prompt (that has its own timeout).
+    let connected = tokio::time::timeout(
+        CONNECT_TIMEOUT + PROMPT_TIMEOUT,
+        client::connect(config, (host.as_str(), port), handler),
+    )
+    .await;
+    let take_outcome = || {
+        outcome
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    };
+    let mut handle = match connected {
+        Err(_) => {
+            return Err(AppError::Connection(format!(
+                "Timed out connecting to {host}:{port}."
+            )));
+        }
+        Ok(Err(e)) => {
+            // A host-key decision explains the failure better than russh's error.
+            return Err(take_outcome().unwrap_or_else(|| connect_error(&e, &host, port)));
+        }
+        Ok(Ok(h)) => h,
+    };
+
+    let method = auth.method_name();
+    match authenticate(&mut handle, &host, &username, auth, &interaction).await {
+        Ok(()) => {
+            tracing::info!(%host, port, %username, auth_method = method, "SSH authenticated")
+        }
+        Err(e) => {
+            tracing::warn!(%host, port, %username, auth_method = method, code = e.code(), "SSH authentication failed");
+            let _ = handle.disconnect(Disconnect::ByApplication, "", "en").await;
+            return Err(e);
+        }
+    }
+    Ok(SshClient { handle, host, port })
 }
 
 fn auth_error(e: &russh::Error) -> AppError {
@@ -532,7 +546,7 @@ fn connect_error(err: &russh::Error, host: &str, port: u16) -> AppError {
 
 /// Host-key policy (SECURITY.md §6): trusted keys pass silently, changed keys
 /// are **blocked**, unknown keys are shown to the user with their fingerprint.
-struct ClientHandler {
+pub struct ClientHandler {
     host: String,
     port: u16,
     interaction: Interaction,
