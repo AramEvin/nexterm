@@ -21,6 +21,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { duplicateTab, reconnectTab } from "@/lib/connect";
 import { cn } from "@/lib/utils";
 import { HOME_TAB, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
 
@@ -213,8 +214,6 @@ function SessionTabItem({
   const setActiveTab = useSessionStore((s) => s.setActiveTab);
   const closeTab = useSessionStore((s) => s.closeTab);
   const closeOtherTabs = useSessionStore((s) => s.closeOtherTabs);
-  const duplicate = useSessionStore((s) => s.duplicate);
-  const reconnect = useSessionStore((s) => s.reconnect);
   const disconnect = useSessionStore((s) => s.disconnect);
   const renameTab = useSessionStore((s) => s.renameTab);
   const tabCount = useSessionStore((s) => s.tabs.length);
@@ -300,12 +299,12 @@ function SessionTabItem({
         </ContextMenuItem>
         <ContextMenuItem
           disabled={tab.connectionId === null}
-          onSelect={() => void duplicate(tab.id)}
+          onSelect={() => void duplicateTab(tab.id)}
         >
           <Copy /> Duplicate session
         </ContextMenuItem>
         {canReconnect ? (
-          <ContextMenuItem onSelect={() => void reconnect(tab.id)}>
+          <ContextMenuItem onSelect={() => void reconnectTab(tab.id)}>
             <RotateCw /> Reconnect
           </ContextMenuItem>
         ) : (

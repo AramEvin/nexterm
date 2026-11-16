@@ -1,4 +1,4 @@
-import { FolderPlus, FolderTree, Plus, Search, Settings, X } from "lucide-react";
+import { FolderPlus, FolderTree, KeyRound, Plus, Search, Settings, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -17,6 +17,7 @@ export function Sidebar() {
   const setQuery = useLibraryStore((s) => s.setQuery);
   const libraryError = useLibraryStore((s) => s.error);
   const openEditor = useDialogStore((s) => s.openEditor);
+  const openCredentials = useDialogStore((s) => s.openCredentials);
   const newFolder = useLibraryStore((s) => s.newFolder);
 
   return (
@@ -25,6 +26,9 @@ export function Sidebar() {
       <nav className="flex w-12 flex-col items-center gap-1 py-2" aria-label="Primary">
         <RailButton label="Sessions" active={!collapsed} onClick={toggleSidebar}>
           <FolderTree />
+        </RailButton>
+        <RailButton label="Vault & credentials" onClick={openCredentials}>
+          <KeyRound />
         </RailButton>
         <div className="flex-1" />
         <RailButton label="Settings (Phase 7)" disabled>

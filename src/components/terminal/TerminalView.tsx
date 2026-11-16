@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { Loader2, RotateCw, Unplug, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { reconnectTab } from "@/lib/connect";
 import { useSessionStore, type SessionTab } from "@/stores/session";
 
 interface TerminalViewProps {
@@ -15,7 +16,6 @@ interface TerminalViewProps {
 export function TerminalView({ tab, visible }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const closeTab = useSessionStore((s) => s.closeTab);
-  const reconnect = useSessionStore((s) => s.reconnect);
   const { controller } = tab;
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function TerminalView({ tab, visible }: TerminalViewProps) {
             <strong className="font-medium">Disconnected.</strong> {tab.closedReason}
           </span>
           {tab.connectionId !== null && (
-            <Button size="sm" onClick={() => void reconnect(tab.id)}>
+            <Button size="sm" onClick={() => void reconnectTab(tab.id)}>
               <RotateCw /> Reconnect
             </Button>
           )}

@@ -13,6 +13,7 @@ import { create } from "zustand";
 import {
   IpcError,
   sshConnect,
+  sshConnectSaved,
   sshDisconnect,
   sshDuplicate,
   sshForget,
@@ -20,7 +21,9 @@ import {
   type SshSessionCallbacks,
 } from "@/lib/ipc";
 import { DEFAULT_COLS, DEFAULT_ROWS, TerminalController } from "@/lib/terminal";
-import type { SessionStatus, SshSessionInfo } from "@/types/ipc";
+import { usePromptStore } from "@/stores/prompts";
+import type { AppErrorCode, SessionStatus, SshSessionInfo } from "@/types/ipc";
+import type { SavedSession } from "@/types/library";
 
 export type TabState = "connecting" | "connected" | "closed";
 
@@ -69,8 +72,18 @@ interface SessionState {
   setActiveTab: (id: string) => void;
   /** New tab. Resolves on success; throws `IpcError` (user-facing message) on failure. */
   connect: (form: ConnectForm, meta?: ConnectMeta) => Promise<void>;
-  reconnect: (tabId: string) => Promise<void>;
-  duplicate: (tabId: string) => Promise<void>;
+  /**
+   * New tab from a saved session; Rust resolves host and credentials.
+   * `extra` carries a username/password the user typed after a
+   * CREDENTIALS_REQUIRED answer. Throws `IpcError` on failure.
+   */
+  connectSaved: (
+    session: SavedSession,
+    extra?: { username?: string; password?: string },
+  ) => Promise<void>;
+  /** Resolves with the error code if the attempt failed (the tab shows the reason). */
+  reconnect: (tabId: string) => Promise<AppErrorCode | null>;
+  duplicate: (tabId: string) => Promise<AppErrorCode | null>;
   disconnect: (tabId: string) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   closeOtherTabs: (tabId: string) => Promise<void>;
@@ -118,6 +131,9 @@ export const useSessionStore = create<SessionState>()((set, get) => {
           onClosed(status.reason);
         }
       },
+      onPrompt: (prompt) => {
+        usePromptStore.getState().push(prompt);
+      },
     };
     /** Call once the backend returned the session id. */
     const started = (info: SshSessionInfo) => {
@@ -134,11 +150,12 @@ export const useSessionStore = create<SessionState>()((set, get) => {
     return { callbacks, started };
   };
 
-  const failTab = (tabId: string, controller: TerminalController, err: unknown) => {
+  const failTab = (tabId: string, controller: TerminalController, err: unknown): AppErrorCode => {
     const reason = err instanceof IpcError ? err.message : "Could not connect.";
     controller.detachSession();
-    controller.notice(reason);
+    controller.notice(reason.split("\n")[0] ?? reason);
     patchTab(tabId, { state: "closed", closedReason: reason, sessionId: null });
+    return err instanceof IpcError ? err.code : "INTERNAL";
   };
 
   return {
@@ -190,9 +207,54 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       }
     },
 
+    connectSaved: async (session, extra = {}) => {
+      set({ connecting: true });
+      const id = crypto.randomUUID();
+      const controller = new TerminalController();
+      const { callbacks, started } = sessionCallbacks(id, controller);
+      try {
+        const info = await sshConnectSaved(
+          {
+            sessionId: session.id,
+            username: extra.username,
+            password: extra.password,
+            cols: DEFAULT_COLS,
+            rows: DEFAULT_ROWS,
+          },
+          callbacks,
+        );
+        set((s) => ({
+          tabs: [
+            ...s.tabs,
+            {
+              id,
+              customTitle: session.name,
+              color: session.color,
+              savedSessionId: session.id,
+              host: session.host,
+              port: session.port,
+              username: extra.username ?? session.username,
+              connectionId: info.connectionId,
+              sessionId: null,
+              state: "connecting",
+              closedReason: null,
+              controller,
+            },
+          ],
+          activeTabId: id,
+        }));
+        started(info);
+      } catch (err) {
+        controller.dispose();
+        throw err;
+      } finally {
+        set({ connecting: false });
+      }
+    },
+
     reconnect: async (tabId) => {
       const tab = findTab(tabId);
-      if (!tab || tab.state !== "closed" || !tab.connectionId) return;
+      if (!tab || tab.state !== "closed" || !tab.connectionId) return null;
       const { controller, connectionId } = tab;
       patchTab(tabId, { state: "connecting", closedReason: null });
       controller.notice(`Reconnecting to ${tab.host}:${tab.port}…`);
@@ -203,18 +265,19 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         if (!findTab(tabId)) {
           // Tab was closed while reconnecting.
           void sshDisconnect(info.sessionId).catch(() => undefined);
-          return;
+          return null;
         }
         controller.term.write("\r\n");
         started(info);
+        return null;
       } catch (err) {
-        if (findTab(tabId)) failTab(tabId, controller, err);
+        return findTab(tabId) ? failTab(tabId, controller, err) : null;
       }
     },
 
     duplicate: async (tabId) => {
       const source = findTab(tabId);
-      if (!source?.connectionId) return;
+      if (!source?.connectionId) return null;
       const id = crypto.randomUUID();
       const controller = new TerminalController();
       const sourceIndex = get().tabs.findIndex((t) => t.id === tabId);
@@ -245,11 +308,12 @@ export const useSessionStore = create<SessionState>()((set, get) => {
         if (!findTab(id)) {
           void sshDisconnect(info.sessionId).catch(() => undefined);
           void sshForget(info.connectionId).catch(() => undefined);
-          return;
+          return null;
         }
         started(info);
+        return null;
       } catch (err) {
-        if (findTab(id)) failTab(id, controller, err);
+        return findTab(id) ? failTab(id, controller, err) : null;
       }
     },
 

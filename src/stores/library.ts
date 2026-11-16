@@ -190,6 +190,8 @@ export function toInput(s: SavedSession): SessionInput {
     host: s.host,
     port: s.port,
     username: s.username,
+    authMethod: s.authMethod,
+    credentialId: s.credentialId,
     color: s.color,
     notes: s.notes,
     favorite: s.favorite,

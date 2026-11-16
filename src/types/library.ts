@@ -2,10 +2,14 @@
 
 export type Protocol = "ssh";
 
+export type AuthMethod = "password" | "publickey" | "agent" | "keyboard-interactive";
+
 export interface Folder {
   id: string;
   parentId: string | null;
   name: string;
+  /** Credential used by sessions inside that have none of their own. */
+  defaultCredentialId: string | null;
   sortOrder: number;
   createdAt: number;
   updatedAt: number;
@@ -19,7 +23,7 @@ export interface SavedSession {
   host: string;
   port: number;
   username: string;
-  authMethod: string;
+  authMethod: AuthMethod;
   credentialId: string | null;
   jumpHostId: string | null;
   color: string | null;
@@ -40,6 +44,9 @@ export interface SessionInput {
   host: string;
   port: number;
   username: string;
+  authMethod: AuthMethod;
+  /** `null` = inherit the folder default, or ask for a password. */
+  credentialId: string | null;
   color: string | null;
   notes: string;
   favorite: boolean;

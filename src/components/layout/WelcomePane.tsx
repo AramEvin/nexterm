@@ -1,12 +1,18 @@
 import { KeyRound, Terminal, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useDialogStore } from "@/stores/dialogs";
+import { useVaultStore } from "@/stores/vault";
+
 interface WelcomePaneProps {
   onQuickConnect: () => void;
 }
 
 /** Content of the Home tab. */
 export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
+  const initialized = useVaultStore((s) => s.status?.initialized ?? false);
+  const openVaultSetup = useDialogStore((s) => s.openVaultSetup);
+  const openCredentials = useDialogStore((s) => s.openCredentials);
   return (
     <div className="flex h-full items-center justify-center p-8">
       <div className="flex max-w-md flex-col items-center gap-6 text-center">
@@ -23,13 +29,13 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
           <Button onClick={onQuickConnect}>
             <Zap /> Quick connect
           </Button>
-          <Button variant="outline" disabled>
-            <KeyRound /> Set up vault
+          <Button variant="outline" onClick={initialized ? openCredentials : openVaultSetup}>
+            <KeyRound /> {initialized ? "Credentials" : "Set up vault"}
           </Button>
         </div>
         <p className="text-muted-foreground/70 text-xs">
-          Tip: right-click a tab to rename, duplicate or reconnect it. Saved sessions arrive in
-          Phase 3, the vault in Phase 4.
+          Tip: double-click a saved session to connect. Link a saved password or key in the
+          session&apos;s Login settings to skip typing it.
         </p>
       </div>
     </div>

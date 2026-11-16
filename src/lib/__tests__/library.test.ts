@@ -16,6 +16,7 @@ const folder = (name: string, parentId: string | null = null, sortOrder = 0): Fo
   id: `f-${name}`,
   parentId,
   name,
+  defaultCredentialId: null,
   sortOrder,
   createdAt: 0,
   updatedAt: 0,

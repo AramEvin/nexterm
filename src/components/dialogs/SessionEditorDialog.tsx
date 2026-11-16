@@ -17,7 +17,8 @@ import { buildIndex, folderPath, parseTags, SESSION_COLORS } from "@/lib/library
 import { cn } from "@/lib/utils";
 import { useDialogStore, type EditorTarget } from "@/stores/dialogs";
 import { toInput, useLibraryStore } from "@/stores/library";
-import type { Protocol, SessionInput } from "@/types/library";
+import { useVaultStore } from "@/stores/vault";
+import type { AuthMethod, Protocol, SessionInput } from "@/types/library";
 
 /** Protocols shown in the picker; only SSH is available in this version. */
 const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
@@ -28,6 +29,22 @@ const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
   { value: "rdp", label: "RDP (Phase 9)", available: false },
   { value: "vnc", label: "VNC (Phase 9)", available: false },
 ];
+
+/** Which credential kind each login method uses (agent uses none). */
+const CREDENTIAL_KIND: Record<AuthMethod, "password" | "key" | null> = {
+  password: "password",
+  publickey: "key",
+  agent: null,
+  "keyboard-interactive": "password",
+};
+
+const AUTH_HINT: Record<AuthMethod, string> = {
+  password: "Without a saved credential you're asked for the password when connecting.",
+  publickey: "Uses a private key stored in the vault.",
+  agent: "Uses keys loaded in the Windows OpenSSH agent or Pageant; nothing is stored here.",
+  "keyboard-interactive":
+    "For servers with one-time codes. A saved password answers the password question automatically.",
+};
 
 const selectClass =
   "border-input bg-background dark:bg-input/30 h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]";
@@ -40,6 +57,8 @@ function blankInput(folderId: string | null): SessionInput {
     host: "",
     port: 22,
     username: "",
+    authMethod: "password",
+    credentialId: null,
     color: null,
     notes: "",
     favorite: false,
@@ -87,6 +106,9 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
   const sessions = useLibraryStore((s) => s.sessions);
   const createSession = useLibraryStore((s) => s.createSession);
   const updateSession = useLibraryStore((s) => s.updateSession);
+  const credentials = useVaultStore((s) => s.credentials);
+  const vaultStatus = useVaultStore((s) => s.status);
+  const openCredentials = useDialogStore((s) => s.openCredentials);
 
   const initial = target.mode === "edit" ? toInput(target.session) : blankInput(target.folderId);
   const [form, setForm] = useState<SessionInput>(initial);
@@ -240,6 +262,67 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
           </select>
         </div>
       </div>
+
+      <fieldset className="grid gap-2 rounded-md border p-3">
+        <legend className="px-1 text-sm font-medium">Login</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="se-auth">Method</Label>
+            <select
+              id="se-auth"
+              className={selectClass}
+              value={form.authMethod}
+              onChange={(e) => {
+                const authMethod = e.target.value as AuthMethod;
+                // A credential of the wrong kind doesn't apply to the new method.
+                const keep = credentials.find((c) => c.id === form.credentialId);
+                const fits = keep !== undefined && keep.kind === CREDENTIAL_KIND[authMethod];
+                update({ authMethod, credentialId: fits ? form.credentialId : null });
+              }}
+            >
+              <option value="password">Password</option>
+              <option value="publickey">Private key</option>
+              <option value="agent">SSH agent (OpenSSH / Pageant)</option>
+              <option value="keyboard-interactive">Keyboard-interactive (2FA)</option>
+            </select>
+          </div>
+          {form.authMethod !== "agent" && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="se-cred">Saved credential</Label>
+              <select
+                id="se-cred"
+                className={selectClass}
+                value={form.credentialId ?? ""}
+                onChange={(e) => {
+                  update({ credentialId: e.target.value || null });
+                }}
+              >
+                <option value="">
+                  {form.authMethod === "publickey"
+                    ? "(folder default)"
+                    : "(folder default, or ask)"}
+                </option>
+                {credentials
+                  .filter((c) => c.kind === CREDENTIAL_KIND[form.authMethod])
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                      {c.username ? ` (${c.username})` : ""}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+        </div>
+        <p className="text-muted-foreground text-xs">
+          {AUTH_HINT[form.authMethod]}{" "}
+          <button type="button" className="text-brand hover:underline" onClick={openCredentials}>
+            {vaultStatus?.initialized === false
+              ? "Set up the vault to save passwords and keys."
+              : "Manage credentials…"}
+          </button>
+        </p>
+      </fieldset>
 
       <div className="grid gap-1.5">
         <Label htmlFor="se-tags">Tags</Label>

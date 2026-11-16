@@ -1,6 +1,13 @@
 import { useEffect } from "react";
 
 import { ConfirmDialog } from "@/components/dialogs/ConfirmDialog";
+import { CredentialsDialog, FolderCredentialDialog } from "@/components/dialogs/CredentialsDialog";
+import {
+  AlertDialog,
+  HostKeyChangedDialog,
+  PromptDialogs,
+} from "@/components/dialogs/PromptDialogs";
+import { UnlockDialog, VaultSetupDialog } from "@/components/dialogs/VaultDialogs";
 import { ConnectDialog } from "@/components/dialogs/ConnectDialog";
 import { SessionEditorDialog } from "@/components/dialogs/SessionEditorDialog";
 import { StatusBar } from "@/components/layout/StatusBar";
@@ -12,6 +19,26 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
 import { HOME_TAB, useSessionStore } from "@/stores/session";
+import { initVaultWatchers, useVaultStore } from "@/stores/vault";
+
+/** The first-run vault wizard is offered once; "Later" is remembered. */
+const SETUP_OFFERED_KEY = "nexterm.vault.setupOffered";
+
+function setupAlreadyOffered(): boolean {
+  try {
+    return localStorage.getItem(SETUP_OFFERED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markSetupOffered(): void {
+  try {
+    localStorage.setItem(SETUP_OFFERED_KEY, "1");
+  } catch {
+    // ignore: worst case the wizard is offered again
+  }
+}
 import { useUiStore } from "@/stores/ui";
 
 /** Application shell: sidebar | (tabs + content) / status bar. */
@@ -25,6 +52,23 @@ export default function App() {
   useEffect(() => {
     void loadAppInfo();
     void loadLibrary();
+    const stopWatchers = initVaultWatchers();
+    // Vault on start: offer setup once, or ask to unlock if it's locked.
+    void useVaultStore
+      .getState()
+      .load()
+      .then(() => {
+        const { status } = useVaultStore.getState();
+        const dialogs = useDialogStore.getState();
+        if (!status) return;
+        if (!status.initialized && !setupAlreadyOffered()) {
+          markSetupOffered();
+          dialogs.openVaultSetup();
+        } else if (status.initialized && !status.unlocked) {
+          dialogs.openUnlock();
+        }
+      });
+    return stopWatchers;
   }, [loadAppInfo, loadLibrary]);
 
   const openQuickConnect = () => {
@@ -50,6 +94,13 @@ export default function App() {
       </div>
       <ConnectDialog />
       <SessionEditorDialog />
+      <CredentialsDialog />
+      <FolderCredentialDialog />
+      <VaultSetupDialog />
+      <UnlockDialog />
+      <PromptDialogs />
+      <HostKeyChangedDialog />
+      <AlertDialog />
       <ConfirmDialog />
     </TooltipProvider>
   );

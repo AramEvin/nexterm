@@ -8,6 +8,12 @@
 import { Channel, invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 import type {
+  Credential,
+  KnownHost,
+  PromptResponse,
+  SshConnectSavedRequest,
+  SshPrompt,
+  VaultStatus,
   AppErrorCode,
   AppErrorPayload,
   AppInfo,
@@ -71,6 +77,8 @@ export interface SshSessionCallbacks {
   /** Raw terminal output (UTF-8 bytes, possibly split mid-character). */
   onOutput: (bytes: Uint8Array) => void;
   onStatus: (status: SessionStatus) => void;
+  /** Host-key or 2FA question; answer with `sshPromptRespond`. */
+  onPrompt: (prompt: SshPrompt) => void;
 }
 
 function sessionChannels(callbacks: SshSessionCallbacks) {
@@ -78,7 +86,8 @@ function sessionChannels(callbacks: SshSessionCallbacks) {
     callbacks.onOutput(toBytes(payload));
   });
   const onStatus = new Channel<SessionStatus>(callbacks.onStatus);
-  return { onOutput, onStatus };
+  const onPrompt = new Channel<SshPrompt>(callbacks.onPrompt);
+  return { onOutput, onStatus, onPrompt };
 }
 
 /** Connect and start a shell in a new tab. */
@@ -87,6 +96,19 @@ export function sshConnect(
   callbacks: SshSessionCallbacks,
 ): Promise<SshSessionInfo> {
   return call<SshSessionInfo>("ssh_connect", { request, ...sessionChannels(callbacks) });
+}
+
+/** Connect to a saved session; Rust resolves the credential from the vault. */
+export function sshConnectSaved(
+  request: SshConnectSavedRequest,
+  callbacks: SshSessionCallbacks,
+): Promise<SshSessionInfo> {
+  return call<SshSessionInfo>("ssh_connect_saved", { request, ...sessionChannels(callbacks) });
+}
+
+/** Answer a host-key or keyboard-interactive prompt. */
+export function sshPromptRespond(promptId: string, response: PromptResponse): Promise<void> {
+  return call<undefined>("ssh_prompt_respond", { promptId, response });
 }
 
 /** New session for an existing tab, using the params remembered in Rust. */
@@ -185,4 +207,91 @@ export function sessionSetFavorite(id: string, favorite: boolean): Promise<void>
 
 export function sessionMarkConnected(id: string): Promise<void> {
   return call<undefined>("session_mark_connected", { id });
+}
+
+// ---- vault ----------------------------------------------------------------
+
+export function vaultStatus(): Promise<VaultStatus> {
+  return call<VaultStatus>("vault_status");
+}
+
+export function vaultSetup(masterPassword: string, remember: boolean): Promise<VaultStatus> {
+  return call<VaultStatus>("vault_setup", { masterPassword, remember });
+}
+
+export function vaultUnlock(masterPassword: string, remember: boolean): Promise<VaultStatus> {
+  return call<VaultStatus>("vault_unlock", { masterPassword, remember });
+}
+
+export function vaultLock(): Promise<VaultStatus> {
+  return call<VaultStatus>("vault_lock");
+}
+
+export function vaultForgetDevice(): Promise<VaultStatus> {
+  return call<VaultStatus>("vault_forget_device");
+}
+
+export function vaultChangePassword(oldPassword: string, newPassword: string): Promise<void> {
+  return call<undefined>("vault_change_password", { oldPassword, newPassword });
+}
+
+export function vaultSetAutoLock(minutes: number): Promise<VaultStatus> {
+  return call<VaultStatus>("vault_set_auto_lock", { minutes });
+}
+
+export function vaultTouch(): Promise<void> {
+  return call<undefined>("vault_touch");
+}
+
+// ---- credentials (metadata only) -------------------------------------------
+
+export function credentialList(): Promise<Credential[]> {
+  return call<Credential[]>("credential_list");
+}
+
+export function credentialCreatePassword(
+  name: string,
+  username: string,
+  password: string,
+): Promise<Credential> {
+  return call<Credential>("credential_create_password", { name, username, password });
+}
+
+/** Opens a native file picker (from Rust). Resolves `null` if cancelled. */
+export function credentialImportKey(
+  name: string,
+  username: string,
+  passphrase: string | null,
+): Promise<Credential | null> {
+  return call<Credential | null>("credential_import_key", { name, username, passphrase });
+}
+
+export function credentialUpdate(
+  id: string,
+  name: string,
+  username: string,
+  password: string | null,
+): Promise<Credential> {
+  return call<Credential>("credential_update", { id, name, username, password });
+}
+
+export function credentialDelete(id: string): Promise<void> {
+  return call<undefined>("credential_delete", { id });
+}
+
+export function folderSetDefaultCredential(
+  id: string,
+  credentialId: string | null,
+): Promise<Folder> {
+  return call<Folder>("folder_set_default_credential", { id, credentialId });
+}
+
+// ---- known hosts ------------------------------------------------------------
+
+export function knownHostsList(): Promise<KnownHost[]> {
+  return call<KnownHost[]>("known_hosts_list");
+}
+
+export function knownHostsRemove(host: string, port: number): Promise<number> {
+  return call<number>("known_hosts_remove", { host, port });
 }

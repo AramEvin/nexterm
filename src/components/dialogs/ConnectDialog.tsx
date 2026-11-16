@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { IpcError, sessionMarkConnected } from "@/lib/ipc";
+import { handleConnectError } from "@/lib/connect";
+import { IpcError } from "@/lib/ipc";
 import { useDialogStore, type ConnectTarget } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
 import { useSessionStore } from "@/stores/session";
@@ -73,6 +74,7 @@ let lastQuick = { host: "", port: "22", username: "" };
 
 function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => void }) {
   const connect = useSessionStore((s) => s.connect);
+  const connectSaved = useSessionStore((s) => s.connectSaved);
   const connecting = useSessionStore((s) => s.connecting);
   const createSession = useLibraryStore((s) => s.createSession);
   const reloadLibrary = useLibraryStore((s) => s.load);
@@ -99,10 +101,10 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
     const form = { host: host.trim(), port: Number(port), username: username.trim(), password };
     try {
       if (saved) {
-        await connect(form, { title: saved.name, color: saved.color, savedSessionId: saved.id });
-        void sessionMarkConnected(saved.id)
-          .then(reloadLibrary)
-          .catch(() => undefined);
+        // Rust still resolves host and any stored credential; we only add
+        // what it asked for.
+        await connectSaved(saved, { username: form.username, password: password || undefined });
+        void reloadLibrary();
       } else {
         lastQuick = { host: form.host, port: String(form.port), username: form.username };
         await connect(form);
@@ -115,6 +117,8 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
             host: form.host,
             port: form.port,
             username: form.username,
+            authMethod: "password",
+            credentialId: null,
             color: null,
             notes: "",
             favorite: false,
@@ -124,7 +128,26 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
       }
       onDone();
     } catch (err) {
-      setError(err instanceof IpcError ? err.message : "Connection failed.");
+      if (!(err instanceof IpcError)) {
+        setError("Connection failed.");
+      } else if (
+        err.code === "VAULT_LOCKED" ||
+        err.code === "HOST_KEY_CHANGED" ||
+        err.code === "HOST_KEY_REJECTED" ||
+        err.code === "CANCELLED"
+      ) {
+        // Another dialog handles these (or the user chose to stop).
+        onDone();
+        handleConnectError(err.code, err.message, {
+          host: form.host,
+          port: form.port,
+          retry: () => {
+            useDialogStore.getState().openConnect(target);
+          },
+        });
+      } else {
+        setError(err.message);
+      }
     } finally {
       setPassword("");
     }

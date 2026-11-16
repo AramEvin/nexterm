@@ -5,6 +5,7 @@ import {
   FolderClosed,
   FolderOpen,
   FolderPlus,
+  KeyRound,
   Pencil,
   Plug,
   Plus,
@@ -29,6 +30,7 @@ import {
   searchSessions,
   type LibraryIndex,
 } from "@/lib/library";
+import { openSavedSession } from "@/lib/connect";
 import { cn } from "@/lib/utils";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
@@ -45,7 +47,6 @@ type DropTarget =
 
 /** Shared actions used by rows and the panel header. */
 function useLibraryActions() {
-  const openConnect = useDialogStore((s) => s.openConnect);
   const openEditor = useDialogStore((s) => s.openEditor);
   const askConfirm = useDialogStore((s) => s.askConfirm);
   const deleteSession = useLibraryStore((s) => s.deleteSession);
@@ -53,7 +54,7 @@ function useLibraryActions() {
 
   return {
     connect: (session: SavedSession) => {
-      openConnect({ mode: "saved", session });
+      void openSavedSession(session);
     },
     edit: (session: SavedSession) => {
       openEditor({ mode: "edit", session });
@@ -338,6 +339,7 @@ function TreeMenu({
   const setRenaming = useLibraryStore((s) => s.setRenamingFolder);
   const setFavorite = useLibraryStore((s) => s.setFavorite);
   const duplicateSession = useLibraryStore((s) => s.duplicateSession);
+  const openFolderCredential = useDialogStore((s) => s.openFolderCredential);
   const [target, setTarget] = useState<MenuTarget>({ kind: "empty" });
 
   const onContextMenu = (e: React.MouseEvent) => {
@@ -413,6 +415,13 @@ function TreeMenu({
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => void newFolder(target.folder.id)}>
               <FolderPlus /> New subfolder
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => {
+                openFolderCredential(target.folder.id);
+              }}
+            >
+              <KeyRound /> Default credential…
             </ContextMenuItem>
             <ContextMenuSeparator />
             <ContextMenuItem
