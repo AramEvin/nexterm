@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-16
+
+### Changed
+
+- Changed-host-key warning: removed the "type the host name → Remove key" box. It only cleared
+  NexTerm's own list, so it did nothing when the old key came from `~/.ssh/known_hosts`. The
+  dialog now says where the old key lives and how to remove it (`ssh-keygen -R <host>` or
+  Credentials → Known hosts).
+
 ## [0.5.0] - 2026-11-16 — Phase 4: vault, key/agent/2FA login, host-key verification
 
 ### Added

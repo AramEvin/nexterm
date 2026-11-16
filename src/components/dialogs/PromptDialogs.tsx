@@ -1,5 +1,5 @@
 import { useState, type SyntheticEvent } from "react";
-import { Fingerprint, KeySquare, ShieldAlert, Trash2 } from "lucide-react";
+import { Fingerprint, KeySquare, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { knownHostsRemove } from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
 import { usePromptStore } from "@/stores/prompts";
 import type { SshPrompt } from "@/types/ipc";
@@ -168,34 +167,15 @@ function KbdDialog({ prompt, respond }: { prompt: KbdPrompt; respond: Respond })
 export function HostKeyChangedDialog() {
   const info = useDialogStore((s) => s.hostKeyChanged);
   const close = useDialogStore((s) => s.closeHostKeyChanged);
-  const [confirmText, setConfirmText] = useState("");
-  const [removed, setRemoved] = useState<string | null>(null);
-
-  const onClose = () => {
-    setConfirmText("");
-    setRemoved(null);
-    close();
-  };
-
-  async function remove() {
-    if (!info) return;
-    try {
-      const n = await knownHostsRemove(info.host, info.port);
-      setRemoved(
-        n > 0
-          ? "The stored key was removed. Connect again to review and accept the new key."
-          : "No key was stored in NexTerm; the old key is in ~/.ssh/known_hosts. Remove it there (ssh-keygen -R host).",
-      );
-    } catch {
-      setRemoved("Could not remove the stored key.");
-    }
-  }
+  const inOpenSsh = info?.message.includes(".ssh/known_hosts") ?? false;
+  const knownHostsName =
+    info && info.port !== 22 ? `[${info.host}]:${String(info.port)}` : info?.host;
 
   return (
     <Dialog
       open={info !== null}
       onOpenChange={(next) => {
-        if (!next) onClose();
+        if (!next) close();
       }}
     >
       <DialogContent className="border-destructive/60 sm:max-w-lg">
@@ -205,33 +185,24 @@ export function HostKeyChangedDialog() {
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm whitespace-pre-line">{info?.message}</p>
-        <div className="bg-muted/40 grid gap-2 rounded-md border p-3">
-          <label htmlFor="hkc-confirm" className="text-sm leading-relaxed">
-            Only after verifying the new fingerprint: type{" "}
-            <code className="bg-background text-foreground rounded px-1">{info?.host}</code> to
-            remove the stored key.
-          </label>
-          <div className="flex gap-2">
-            <Input
-              id="hkc-confirm"
-              value={confirmText}
-              spellCheck={false}
-              onChange={(e) => {
-                setConfirmText(e.target.value);
-              }}
-            />
-            <Button
-              variant="destructive"
-              disabled={confirmText.trim() !== info?.host}
-              onClick={() => void remove()}
-            >
-              <Trash2 /> Remove key
-            </Button>
-          </div>
-          {removed && <p className="text-muted-foreground text-xs">{removed}</p>}
+        <div className="bg-muted/40 text-muted-foreground rounded-md border p-3 text-sm leading-relaxed">
+          {inOpenSsh ? (
+            <>
+              Only after verifying the new fingerprint, remove the old key from{" "}
+              <code className="text-foreground">~/.ssh/known_hosts</code> in PowerShell:
+              <code className="bg-background text-foreground mt-1 block rounded px-2 py-1 select-all">
+                ssh-keygen -R {knownHostsName}
+              </code>
+            </>
+          ) : (
+            <>
+              Only after verifying the new fingerprint, remove the old key in{" "}
+              <span className="text-foreground">Credentials → Known hosts</span>.
+            </>
+          )}
         </div>
         <DialogFooter>
-          <Button autoFocus onClick={onClose}>
+          <Button autoFocus onClick={close}>
             Close
           </Button>
         </DialogFooter>
