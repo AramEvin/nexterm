@@ -29,6 +29,10 @@ secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 rusqlite = { version = "0.42", features = ["bundled"] }
+argon2 = "0.6"
+chacha20poly1305 = "0.11"
+tauri-plugin-dialog = "2"
+keyring = { version = "3", default-features = false, features = ["windows-native", "apple-native", "linux-native"] }
 
 [lints.rust]
 unsafe_code = "forbid"
@@ -46,3 +50,14 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# The vault's Argon2id (64 MiB) is very slow unoptimised; compile the crypto
+# crates with optimisations even in dev/test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3

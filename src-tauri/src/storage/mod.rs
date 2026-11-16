@@ -25,7 +25,10 @@ use crate::error::{AppError, AppResult};
 
 /// Migrations in order. Index `i` brings the schema from version `i` to `i + 1`.
 /// Never edit a released migration; add a new one.
-const MIGRATIONS: &[&str] = &[include_str!("../../migrations/0001_initial.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("../../migrations/0001_initial.sql"),
+    include_str!("../../migrations/0002_vault.sql"),
+];
 
 impl From<rusqlite::Error> for AppError {
     fn from(err: rusqlite::Error) -> Self {
@@ -45,6 +48,11 @@ pub struct Database {
 /// Default database location under the OS per-user data directory.
 pub fn db_path(data_dir: &Path) -> PathBuf {
     data_dir.join("NexTerm").join("nexterm.db")
+}
+
+/// Validate an id coming from the frontend (must be a UUID).
+pub fn validate_id(raw: &str) -> AppResult<String> {
+    validate::id(raw)
 }
 
 /// Current time as Unix epoch milliseconds.

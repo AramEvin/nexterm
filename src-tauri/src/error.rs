@@ -32,6 +32,32 @@ pub enum AppError {
     #[error("authentication failed")]
     AuthFailed,
 
+    /// A saved credential is needed but the vault is locked (UI shows the unlock screen).
+    #[error("vault is locked")]
+    VaultLocked,
+
+    /// The master password did not decrypt the vault.
+    #[error("wrong master password")]
+    WrongMasterPassword,
+
+    /// The server's host key differs from the stored one: possible MITM.
+    /// The message names the host and both fingerprints (no secrets).
+    #[error("host key changed: {0}")]
+    HostKeyChanged(String),
+
+    /// The user declined an unknown host key.
+    #[error("host key rejected by user")]
+    HostKeyRejected,
+
+    /// The connection needs input the request didn't carry (e.g. a password
+    /// for a session without a saved credential). The UI asks and retries.
+    #[error("credentials required: {0}")]
+    CredentialsRequired(String),
+
+    /// The user cancelled an interactive step (2FA prompt, dialog).
+    #[error("cancelled")]
+    Cancelled,
+
     /// Filesystem / OS I/O failure. Details are logged, not exposed.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -49,6 +75,12 @@ impl AppError {
             Self::NotFound(_) => "NOT_FOUND",
             Self::Connection(_) => "CONNECTION",
             Self::AuthFailed => "AUTH_FAILED",
+            Self::VaultLocked => "VAULT_LOCKED",
+            Self::WrongMasterPassword => "WRONG_MASTER_PASSWORD",
+            Self::HostKeyChanged(_) => "HOST_KEY_CHANGED",
+            Self::HostKeyRejected => "HOST_KEY_REJECTED",
+            Self::CredentialsRequired(_) => "CREDENTIALS_REQUIRED",
+            Self::Cancelled => "CANCELLED",
             Self::Io(_) => "IO",
             Self::Internal(_) => "INTERNAL",
         }
@@ -60,6 +92,13 @@ impl AppError {
             Self::Validation(msg) => msg.clone(),
             Self::NotFound(what) => format!("{what} was not found."),
             Self::Connection(msg) => msg.clone(),
+            Self::VaultLocked => "The vault is locked. Unlock it to use saved credentials.".into(),
+            Self::WrongMasterPassword => "Wrong master password.".into(),
+            Self::HostKeyChanged(msg) | Self::CredentialsRequired(msg) => msg.clone(),
+            Self::HostKeyRejected => {
+                "Connection cancelled: the server's host key was not accepted.".into()
+            }
+            Self::Cancelled => "Cancelled.".into(),
             Self::AuthFailed => "Authentication failed. Check the username and password.".into(),
             Self::Io(_) => "A file or system operation failed. See the log for details.".into(),
             Self::Internal(_) => "An unexpected error occurred. See the log for details.".into(),
