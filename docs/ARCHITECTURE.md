@@ -130,6 +130,33 @@ UI ──ssh_connect_saved(sessionId)──▶ commands::ssh::resolve
   (one place that turns error codes into dialogs: unlock + retry, changed-key
   warning, ask for credentials).
 
+## File manager (Phase 5)
+
+```
+FilesView (2 × FilePane, TransferQueue)
+   │ fs_list / fs_mkdir / fs_rename / fs_delete / fs_chmod  (Endpoint = local | remote{fsId})
+   │ sftp_open_saved / sftp_open_connection ──▶ ssh::connect ──▶ RemoteFs (SFTP subsystem)
+   │ transfer_start(request, onEvent) ──▶ Transfers (≤3 jobs) ──▶ Run: plan ▸ copy
+   ▼
+sftp::fs::Fs { Local | Remote(Arc<RemoteFs>) }  ── one read/write interface for both sides
+```
+
+- **`sftp/remote.rs`:** one SFTP session per remote pane, on its own SSH
+  connection (`ssh::connect` is shared with terminals). Errors become short
+  `FILE` / `CONNECTION` messages.
+- **`sftp/local.rs`:** the local disk (blocking, run on the blocking pool); "" =
+  the Windows drive list.
+- **`sftp/fs.rs`:** `Fs`, so local↔remote, remote↔local and remote↔remote
+  (relay) share one transfer path.
+- **`sftp/transfer.rs`:** the queue. Plan (expand folders, check names,
+  conflicts, totals), then stream 256 KiB chunks with progress every ~150 ms.
+- **`sftp/paths.rs`:** validation, including names that come from the server.
+- **`sftp/registry.rs`:** open SFTP sessions by opaque id (max 64).
+- **Frontend:** `stores/files.ts` (tabs and panes), `stores/transfers.ts`
+  (queue rows, retry), `lib/fileActions.ts` (one implementation of each action
+  for menus, keys and drag & drop), `components/files/*`. File-manager tabs
+  share the tab bar with terminals (`registerExternalTab`).
+
 ## Data locations (Windows)
 
 | What             | Where                                                    |

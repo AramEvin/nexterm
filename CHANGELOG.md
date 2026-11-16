@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16 — Phase 5 part 1: file manager (SFTP)
+
+### Added
+
+- File-manager tab with two panes. Each pane shows the local disk, the server of an open
+  terminal tab (reuses its login) or a saved session (credential from the vault; asks for a
+  password in the pane if none is linked).
+- Transfers between any two panes: upload, download and **server-to-server relay** through
+  this PC. Started by dragging rows between panes, dropping files from Windows Explorer, F5,
+  or "Copy to other side". Whole folders are copied recursively.
+- Transfer queue: max 3 copies at once, progress, speed, ETA, cancel, retry, "clear finished".
+  Files are streamed in 256 KiB chunks with 64-bit counters (> 4 GB fine). Downloads go to
+  `name.nexterm-part` and are renamed when complete; a cancelled or failed copy removes its
+  partial file. Modification times are preserved.
+- Name clashes: Overwrite (merges folders) / Skip / Keep both. Copying an item onto itself
+  or a folder into itself is refused.
+- File actions: rename, new folder, delete (recursive, confirmed), permissions dialog (rwx grid
+  - octal), copy path, quick filter, hidden-files toggle, sortable columns, breadcrumbs with
+    typed paths, Explorer-style selection, keyboard (arrows, Enter, Backspace, F2, F5, F7, Del,
+    Ctrl+A, Ctrl+R). Virtualized list for 10,000+ entries.
+- "Open files (SFTP)" on terminal tabs, "Open in file manager" on saved sessions, a
+  File manager button in the tab bar and on Home.
+- Copy button for the `ssh-keygen -R` command in the changed-host-key warning.
+- Error code `FILE` with short, specific messages ("Permission denied: \"x\"").
+- Tests: path validation (traversal, Windows names), transfer engine (trees, conflicts,
+  symlinks, cancel), SFTP integration tests against OpenSSH (20 MB round trip, relay, hostile
+  server file names, cancelled 200 MB upload), Vitest for formatting, sorting, selection
+  and the queue.
+
+### Changed
+
+- Terminal and SFTP share one connect step (`ssh::connect`): the same host-key checks and
+  login methods apply to file panes.
+- Confirmation dialogs for destructive actions focus Cancel, not the destructive button.
+
+### Security
+
+- Names inside folders downloaded from a server are validated before they become local
+  paths (no `..`, separators, drive letters, alternate data streams or reserved device
+  names); unsafe ones are skipped and reported.
+- Symlinks are never followed when copying or deleting folders.
+- File-operation error messages (which name files) are not written to the log; transfers log
+  only counts and sizes.
+
 ## [0.5.1] - 2026-11-16
 
 ### Changed

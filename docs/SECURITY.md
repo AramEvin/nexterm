@@ -1,6 +1,6 @@
 # NexTerm security design
 
-Status: **Phase 4.** Sections marked _(planned)_ are requirements for later phases.
+Status: **Phase 5 (part 1).** Sections marked _(planned)_ are requirements for later phases.
 
 ## 1. Assets
 
@@ -202,6 +202,24 @@ vault key --XChaCha20-Poly1305 seals--> each credential
 After a successful first method, a server that asks for a second factor
 (partial success) gets a keyboard-interactive round.
 
+## 6a. File manager (implemented in Phase 5)
+
+The file manager reads and writes the user's disk and remote servers, and it
+consumes names chosen by the server. Threats and controls:
+
+| Threat                                                                                                                   | Control                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A malicious server returns entries like `..\..\AppData\x`, `C:\evil`, `x:stream`, `CON` inside a folder being downloaded | Every name from the source is checked with `paths::safe_local_name` before it becomes a local path: no separators, `.`/`..`, NUL, control chars, `<>:"\|?*`, trailing dot/space or reserved device names. Unsafe names are skipped and listed in the result (integration test `hostile_names_from_the_server_never_escape_the_target`). |
+| Symlink loops or links pointing outside the folder                                                                       | Recursive copy and delete use `lstat`/`symlink_metadata` and never follow links inside a tree; `remove_dir_all` doesn't follow links (CVE-2022-21658 fix in std). Depth ≤ 64, ≤ 200,000 items per job.                                                                                                                                  |
+| Data loss through clashes                                                                                                | Default for clashes in a folder that isn't on screen is "keep both". Copying a file onto itself or a folder into itself is refused. Destructive confirmation dialogs focus Cancel.                                                                                                                                                      |
+| Half-written files                                                                                                       | Local targets are written to `*.nexterm-part` and renamed only when complete; failed or cancelled copies delete their partial file.                                                                                                                                                                                                     |
+| Compromised UI sending arbitrary paths                                                                                   | Same trust as today's UI (strict CSP, no remote content). Every path and name is still validated in Rust (`commands::sftp`): absolute local paths only, length limits, no NUL, new names can't contain separators, drives/root can't be deleted, renamed or copied whole.                                                               |
+| Credentials                                                                                                              | Remote panes use the same `ConnectSpec` resolution as terminals: saved sessions re-read the vault, terminal-tab panes reuse the tab's remembered spec in Rust. The UI only holds an opaque `fsId`.                                                                                                                                      |
+| Host keys                                                                                                                | SFTP connections go through the same `ssh::connect`, including TOFU and changed-key blocking.                                                                                                                                                                                                                                           |
+
+Remote ↔ remote transfers are relayed through this PC (read from A, write to
+B); no credentials are forwarded to either server.
+
 ## 7. Logging policy (implemented in Phase 0)
 
 - Location `%APPDATA%\NexTerm\logs`, daily rotation, 14 files retained.
@@ -214,6 +232,9 @@ After a successful first method, a server that asks for a second factor
 - Phase 4 adds: vault created/unlocked/locked/auto-locked, failed master password,
   credential created/deleted (id, kind, key fingerprint), host-key decisions, and
   `HOST KEY CHANGED` at ERROR level.
+- Phase 5 adds: SFTP session opened/closed (host, port), transfer started/finished/
+  cancelled/failed (file count, bytes, direction only), items deleted (count). File and
+  folder names are **not** logged, and `FILE` errors are logged by code only.
 - **Acceptance test:** `logs_contain_no_secrets` captures all log output (TRACE level)
   across password, key, wrong-password and keyboard-interactive logins. It asserts that
   no password, passphrase or key line appears, while the audit events are present.
