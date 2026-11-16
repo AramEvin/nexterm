@@ -103,6 +103,33 @@ deny-by-default model working.
   thousands of sessions. The tree uses one shared context menu, and search renders
   at most 300 rows.
 
+## Vault, credentials and host keys (Phase 4)
+
+```
+UI ──ssh_connect_saved(sessionId)──▶ commands::ssh::resolve
+                                       ├─ storage::sessions::get
+                                       ├─ vault::credentials::resolve_for_session (own → folder chain)
+                                       └─ vault::credentials::load_secret ──▶ Vault::with_key (VAULT_LOCKED if locked)
+                                     ssh::client::open
+                                       ├─ ClientHandler::check_server_key ──▶ known_hosts::check
+                                       │      unknown ──▶ PromptBroker.ask ──▶ UI dialog ──▶ ssh_prompt_respond
+                                       └─ authenticate (password | publickey | agent | keyboard-interactive)
+```
+
+- **`vault/`:** `crypto` (Argon2id, XChaCha20-Poly1305 seal/open), `keychain` (OS store
+  behind a trait; in-memory for tests), `mod.rs` (setup/unlock/lock/auto-lock state
+  machine), `credentials` (encrypted CRUD; metadata only over IPC).
+- **`ssh/prompt.rs`:** the `PromptBroker` matches UI answers to waiting
+  connections by random id, with a 3-minute timeout. Each connection supplies a
+  third IPC channel (`onPrompt`).
+- **`ssh/known_hosts.rs`:** NexTerm's table plus a read-only `~/.ssh/known_hosts`.
+- **`ssh/connections.rs`:** `ConnectSpec::{Direct, Saved}`, so reconnects of saved
+  sessions re-resolve through the vault.
+- **Frontend:** `stores/vault.ts` (status, credentials, activity pings,
+  `vault-locked` event), `stores/prompts.ts` (prompt queue), and `lib/connect.ts`
+  (one place that turns error codes into dialogs: unlock + retry, changed-key
+  warning, ask for credentials).
+
 ## Data locations (Windows)
 
 | What             | Where                                                    |

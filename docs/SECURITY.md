@@ -1,7 +1,6 @@
 # NexTerm security design
 
-Status: **Phase 1.** Sections marked _(planned)_ describe the design that
-later phases must implement. They are requirements, not current behaviour.
+Status: **Phase 4.** Sections marked _(planned)_ are requirements for later phases.
 
 ## 1. Assets
 
@@ -63,32 +62,33 @@ later phases must implement. They are requirements, not current behaviour.
 - **No remote content:** the UI is served from bundled assets; no CDN fonts or scripts.
 - `unsafe_code = "forbid"` in the Rust crate.
 
-## 4. Password handling in Phases 1–3 (quick connect)
+## 4. Typed passwords and per-tab connection state
 
-- The password is typed into the quick-connect dialog and sent once, in the
-  `ssh_connect` request. It is **not** kept in any frontend store; the input field
-  is cleared after every attempt.
-- In Rust it is deserialized directly into `secrecy::SecretString` (zeroized on
-  drop, prints `[REDACTED]` in `Debug`; a unit test checks this). It is dropped
-  right after authentication.
-- **Known gap:** `russh::authenticate_password` takes a `String`, so russh holds a
-  short-lived copy that is not zeroized. The JS string in the webview is likewise
-  garbage-collected, not wiped. Phase 4 moves stored credentials into the vault so
-  saved passwords never pass through the frontend.
-- **Reconnect / Duplicate (Phase 2):** after a successful login, Rust keeps the
-  connection parameters for that tab (`ssh::SshConnections`, password as
-  `SecretString`) so the user doesn't retype the password. The frontend only holds
-  an opaque random `connectionId`.
-  - Lifetime: until the tab is closed (`ssh_forget`) or the app exits. Never
-    written to disk, never sent back to the frontend.
-  - A failed login is never remembered.
-  - Capped at 256 entries, so a buggy or hostile frontend can't grow it without limit.
-  - Every copy of a password is an explicit `duplicate()` call (`SecretString` is not
-    `Clone`), so copies are visible in code review.
-  - Residual risk: while a tab is open, its password sits in process memory. That
-    matches the existing out-of-scope item "malware running as the same user while
-    the app is open". Phase 4 replaces it with a vault `credential_id`, and the vault
-    auto-lock then bounds the exposure.
+- **Quick connect:** the password is sent once, in the `ssh_connect` request. It is
+  not kept in any frontend store, and the input field is cleared after every attempt.
+  In Rust it is deserialized straight into `secrecy::SecretString` (zeroized on drop,
+  prints `[REDACTED]`; unit-tested).
+- **Saved sessions** are connected with `ssh_connect_saved(sessionId)`. Rust reads the
+  session, finds its credential (its own, or the nearest folder default), and
+  decrypts it with the vault. Nothing secret crosses IPC. A password is typed only if
+  no credential is linked, and the UI only asks after Rust replies
+  `CREDENTIALS_REQUIRED`.
+- **Reconnect / Duplicate:** each tab owns an opaque `connectionId` that points to a
+  `ConnectSpec` in Rust:
+  - `Direct` (quick connect) keeps the typed password as `SecretString` until the
+    tab closes (`ssh_forget`) or the app exits.
+  - `Saved` keeps only the session id (plus anything the user had to type). Every
+    reconnect re-reads the session and the vault, so a locked vault or an edited
+    session takes effect immediately.
+  - Failed logins are never remembered, the store is capped at 256 entries, and every
+    copy of a secret is an explicit `duplicate()` call.
+- **Known gaps:**
+  - russh's auth calls take `String`s, so russh holds short-lived copies that aren't
+    zeroized.
+  - JS strings in the webview (a typed password, a 2FA answer) are garbage-collected,
+    not wiped.
+  - Locking the vault does not wipe passwords typed for _quick-connect_ tabs. Close
+    those tabs to drop them.
 
 ## 4a. Session database (Phase 3)
 
@@ -110,36 +110,97 @@ later phases must implement. They are requirements, not current behaviour.
 - **Note:** session notes are stored in plaintext. Don't put secrets in notes;
   that's what the vault is for.
 
-## 5. Vault crypto design _(planned, Phase 4)_
+## 5. Credential vault (implemented in Phase 4)
 
-- **KDF:** Argon2id, memory ≥ 64 MiB, iterations ≥ 3, parallelism 1–4, random
-  16-byte salt → 256-bit key-encryption key (KEK). Parameters are stored with the
-  vault so they can be raised later without breaking old vaults.
-- **Key hierarchy:** a random 256-bit **vault key** encrypts secrets; the KEK wraps
-  the vault key. Changing the master password re-wraps one key instead of
-  re-encrypting every secret.
-- **AEAD:** XChaCha20-Poly1305 with a random 24-byte nonce per encryption.
-  Record format: `{version, salt, nonce, ciphertext}`. The record's `credential_id`
-  is bound as associated data so ciphertexts can't be swapped between records.
-- **"Remember on this device":** the vault key is stored in Windows Credential
-  Manager via `keyring` (protected by DPAPI under the user's logon). Trade-off: any
-  process running as that user can read it. Off by default; documented in the UI.
-- **Memory hygiene:** `secrecy::SecretString`, `zeroize::Zeroizing<Vec<u8>>`; secret
-  types implement neither `Debug` nor `Display` and are never `Serialize`d.
-- **Auto-lock:** configurable idle timeout + manual lock; locking drops the key.
+**Key hierarchy**
 
-## 6. Host-key verification _(planned, Phase 4)_
+```text
+master password --Argon2id(salt, m=64 MiB, t=3, p=1)--> KEK
+KEK --XChaCha20-Poly1305 unwraps--> vault key (256-bit random)
+vault key --XChaCha20-Poly1305 seals--> each credential
+```
 
-Unknown host → dialog with key type + SHA256 fingerprint → _Accept once_ / _Accept
-& save_ / _Reject_. Changed key → connection blocked with a MITM warning; no
-one-click override. Trust store: NexTerm's own known_hosts; optionally read
-`%USERPROFILE%\.ssh\known_hosts`.
+- **KDF:** Argon2id v1.3, 64 MiB memory, 3 passes, 1 lane, 16-byte random salt.
+  - Parameters are stored in `vault_meta`, so they can be raised later.
+  - On unlock, stored parameters **below that minimum are refused**. A tampered
+    header can't downgrade the KDF (unit-tested).
+- **AEAD:** XChaCha20-Poly1305 with a fresh random 192-bit nonce per seal.
+  - Blob format: `[version=1][nonce:24][ciphertext+tag]`.
+  - The associated data is a label plus, for credentials, the credential id
+    (`nexterm:credential:v1:<uuid>`). Copying one record's ciphertext into another row
+    fails authentication (unit-tested).
+- **Verification:** a wrong master password fails the AEAD tag on the wrapped key
+  (`WRONG_MASTER_PASSWORD`). A separate `key_check` value lets a remembered key be
+  validated without the password.
+- **Changing the master password** re-wraps the vault key with a new salt. Credentials
+  are not re-encrypted.
+- **"Remember on this device":**
+  - The vault key is stored in the OS credential store via `keyring` (Windows
+    Credential Manager / DPAPI, macOS Keychain, Linux keyutils), under a random
+    per-vault id, and the app unlocks at start-up.
+  - Off by default; the UI explains the trade-off (any process running as the user
+    can read it).
+  - A stale entry that doesn't match the vault is detected and deleted.
+- **Locking:** manual lock, or auto-lock after configurable inactivity (default 15
+  minutes; 0 = never).
+  - The UI reports activity at most every 30 s, and a background task checks every
+    15 s, then notifies the UI (`vault-locked` event).
+  - Locking drops the key from memory; open SSH sessions stay connected.
+  - Unlocking after a manual lock or auto-lock always needs the master password, even
+    when the vault is remembered on this device.
+- **In memory:** the key is a `Zeroizing<[u8; 32]>`, and decrypted payloads are
+  `Zeroizing<Vec<u8>>` → `SecretString`. `CredentialSecret` has a redacting `Debug` and
+  no `Serialize`.
+- **Private keys** are picked with a native file dialog **opened by Rust**
+  (`credential_import_key`). The key text never passes through the webview, and the
+  frontend can't make Rust read an arbitrary path.
+  - Files over 64 KiB are refused.
+  - The key is parsed first (OpenSSH, PEM/PKCS#8, PuTTY `.ppk`; a passphrase is
+    verified), then stored together with its passphrase in the vault.
+  - The public algorithm and SHA256 fingerprint are kept in clear for display.
+- **Credential metadata** (name, kind, username, key fingerprint, usage count) is
+  readable while locked. Secrets are not.
+- **Acceptance test:** `database_file_contains_no_secrets` creates a vault, a password
+  credential and a passphrase-protected key, then greps the database **and its WAL/SHM
+  files** for the master password, the password, the passphrase and the key material.
+  It also passed when re-checked against the database written by a real GUI session.
 
-**Phase 1–3 exception (active):** until Phase 4, every host key is accepted. The
-key type and SHA256 fingerprint are logged at WARN level
-(`host key accepted WITHOUT verification`), and the quick-connect dialog warns the
-user. **Do not use pre-Phase-4 builds against untrusted networks.** To compare a
-fingerprint by hand: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server.
+## 6. Host-key verification (implemented in Phase 4)
+
+- **Lookup:** NexTerm's own `known_hosts` table, then the user's
+  `~/.ssh/known_hosts` (read-only, hashed entries supported, never modified). A
+  server's identity is `host:port`.
+- **Trusted key** → connect silently (logged with its source).
+- **Unknown key** → the UI shows host, port, key type and SHA256 fingerprint (the same
+  format as `ssh-keygen -lf`).
+  - Choices: **Reject** (focused by default) / **Accept once** / **Accept & save**.
+  - If the host previously used a different key type, the prompt says so.
+  - No answer within 3 minutes = reject.
+- **Changed key** (same type, different key) → **connection blocked**, logged at ERROR.
+  - The UI shows a red warning with the expected and presented fingerprints.
+  - There is no "connect anyway". The only way forward is to remove the stored key,
+    which requires typing the host name, and then go through the unknown-key prompt
+    again.
+  - A changed key in `~/.ssh/known_hosts` also blocks; that file has to be fixed by the
+    user (`ssh-keygen -R`).
+- **Fail closed:** if the trust store can't be read, the connection is refused.
+- **Certificates:** host certificates are checked by their underlying public key.
+  CA-based `@cert-authority` trust is not supported yet.
+- **Acceptance test:** `host_key_tofu_trust_and_changed_key_is_blocked` (real OpenSSH
+  server) covers prompt → saved, trusted without prompt, changed → `HOST_KEY_CHANGED`
+  with no prompt shown, and reject → `HOST_KEY_REJECTED`.
+
+### Authentication methods
+
+| Method                     | Secret source                                                            | Notes                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| Password                   | Vault credential, or typed                                               | If the server only allows keyboard-interactive, the password answers one hidden "Password" prompt automatically |
+| Public key                 | Vault credential                                                         | RSA uses the best SHA-2 signature the server supports (`server-sig-algs`)                                       |
+| Agent                      | Windows OpenSSH agent pipe, then Pageant (unix: `SSH_AUTH_SOCK`)         | Nothing stored in NexTerm; every agent identity is tried                                                        |
+| Keyboard-interactive (2FA) | Prompts shown to the user; a stored password answers the password prompt | At most 10 rounds; answers are never logged                                                                     |
+
+After a successful first method, a server that asks for a second factor
+(partial success) gets a keyboard-interactive round.
 
 ## 7. Logging policy (implemented in Phase 0)
 
@@ -150,6 +211,12 @@ fingerprint by hand: `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the s
 - **Never logged:** passwords, keys, passphrases, vault keys, terminal input/output,
   file contents.
 - `AppError` sends only a code + generic message to the UI; details stay in the log.
+- Phase 4 adds: vault created/unlocked/locked/auto-locked, failed master password,
+  credential created/deleted (id, kind, key fingerprint), host-key decisions, and
+  `HOST KEY CHANGED` at ERROR level.
+- **Acceptance test:** `logs_contain_no_secrets` captures all log output (TRACE level)
+  across password, key, wrong-password and keyboard-interactive logins. It asserts that
+  no password, passphrase or key line appears, while the audit events are present.
 
 ## 8. Supply chain
 

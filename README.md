@@ -3,7 +3,7 @@
 A free, open-source, security-focused SSH & SFTP client for Windows (Linux/macOS
 later): a modern alternative to MobaXterm.
 
-> **Status: Phase 3.** Saved sessions with folders, tags and search; multiple SSH sessions in tabs.
+> **Status: Phase 4.** Encrypted credential vault, key/agent/2FA login and strict host-key verification; saved sessions in folders; SSH tabs.
 > Host keys are **not verified** until Phase 4: only use it on networks you trust.
 
 ## Planned v1 features
@@ -19,13 +19,22 @@ later): a modern alternative to MobaXterm.
 
 ## Current features
 
+**Phase 4: vault & secure login**
+
+- Encrypted credential vault (Argon2id + XChaCha20-Poly1305) with first-run setup, unlock screen, manual lock and auto-lock
+- "Remember on this device" via Windows Credential Manager (optional)
+- Saved passwords and private keys (OpenSSH, PEM, PuTTY `.ppk`, passphrase-protected); a default credential per folder
+- Login methods: password, private key, Windows OpenSSH agent / Pageant, keyboard-interactive (2FA / OTP)
+- Host-key verification: fingerprint prompt for new servers, **changed keys block the connection**; reads `~/.ssh/known_hosts`
+- Known-hosts manager; no secret ever stored in the session database or logs (tested)
+
 **Phase 3: saved sessions**
 
 - Sidebar library: nested folders, saved sessions (name, host, port, username, colour, tags, notes), favourites
 - Drag sessions and folders between folders; right-click menus; double-click or Enter to connect
 - Instant search by name, host, user, folder or tag (`tag:prod` for tags only); handles thousands of sessions
 - Quick connect can save the server to the library (without the password)
-- Stored locally in SQLite (`%APPDATA%\NexTerm\nexterm.db`); passwords are **not** saved until the vault (Phase 4)
+- Stored locally in SQLite (`%APPDATA%\NexTerm\nexterm.db`); secrets live only in the encrypted vault
 
 **Phase 2: tabs**
 

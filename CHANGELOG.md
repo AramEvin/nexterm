@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-16 — Phase 4: vault, key/agent/2FA login, host-key verification
+
+### Added
+
+- Credential vault: Argon2id (64 MiB, t=3) → KEK → random vault key → XChaCha20-Poly1305 per
+  secret, with the credential id as associated data. First-run setup wizard, unlock screen,
+  manual lock, auto-lock (5 min to 4 h, or never), change master password.
+- "Remember on this device" (Windows Credential Manager / macOS Keychain / Linux keyutils).
+- Credentials manager: passwords and private keys (OpenSSH, PEM, PuTTY .ppk, with passphrase).
+  Keys are picked in a native file dialog opened by Rust, so the key never passes through the UI.
+- Default credential per folder (inherited by subfolders); per-session login method and credential.
+- Login methods: password, public key (SHA-2 RSA signatures when supported), SSH agent (Windows
+  OpenSSH pipe, then Pageant; `SSH_AUTH_SOCK` on unix), keyboard-interactive / 2FA. A stored
+  password answers a "Password:" prompt automatically.
+- Host-key verification: unknown → fingerprint dialog (Reject / Accept once / Accept & save);
+  changed → connection blocked with a red warning and no override; reads `~/.ssh/known_hosts`
+  read-only. Known-hosts manager.
+- Saved sessions connect through `ssh_connect_saved`; Rust resolves the credential. The UI asks
+  for a password only when Rust reports `CREDENTIALS_REQUIRED`, and a locked vault opens the
+  unlock screen and retries.
+- New error codes: `VAULT_LOCKED`, `WRONG_MASTER_PASSWORD`, `HOST_KEY_CHANGED`,
+  `HOST_KEY_REJECTED`, `CREDENTIALS_REQUIRED`, `CANCELLED`.
+- Schema migration 0002 (vault_meta, credentials, known_hosts, folder default credential).
+- Tests: crypto, vault state machine, credentials (incl. ciphertext swap), known hosts, prompt
+  broker; acceptance tests that grep the database files and captured logs for secrets;
+  integration tests for host-key TOFU / changed-key blocking, key, passphrase key, wrong key,
+  agent and keyboard-interactive logins against real OpenSSH.
+
+### Changed
+
+- Reconnect / duplicate of saved sessions re-reads the session and vault every time.
+
+### Security
+
+- Host keys are now verified (the Phase 1–3 "accept and log" behaviour is gone).
+- See SECURITY.md §4–§7 for the vault design, host-key policy, logging and known gaps.
+
 ## [0.4.0] - 2026-11-14 — Phase 3: session manager
 
 ### Added
