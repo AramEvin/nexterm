@@ -79,7 +79,7 @@ export function SessionEditorDialog() {
         if (!next && !saving) close();
       }}
     >
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         {target && (
           <EditorForm
             key={target.mode === "edit" ? target.session.id : `new:${target.folderId ?? ""}`}
@@ -167,7 +167,8 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
       <DialogHeader>
         <DialogTitle>{editing ? "Edit session" : "New session"}</DialogTitle>
         <DialogDescription>
-          Saved sessions keep host, port and username. Passwords come with the vault (Phase 4).
+          Host, port and login options. Passwords and keys are stored encrypted in the vault, never
+          in the session list.
         </DialogDescription>
       </DialogHeader>
 

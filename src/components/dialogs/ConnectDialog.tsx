@@ -31,7 +31,7 @@ function validate(host: string, port: string, username: string): string | null {
 /**
  * Quick connect (type a host) or connect to a saved session (only the password
  * is asked). The password is sent once and cleared after every attempt; it is
- * never saved (saved passwords arrive with the encrypted vault in Phase 4).
+ * never kept by the UI (store it as a vault credential to reuse it).
  */
 export function ConnectDialog() {
   const target = useDialogStore((s) => s.connect);
@@ -249,8 +249,9 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
       )}
 
       <p className="text-muted-foreground text-xs">
-        Passwords are not saved yet (encrypted vault: Phase 4). Host keys are not verified yet, so
-        only connect over networks you trust.
+        {saved
+          ? "To skip this next time, link a saved credential in the session's Login settings."
+          : "The password is used once and not saved. Save it as a vault credential to reuse it."}
       </p>
 
       <DialogFooter>

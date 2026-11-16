@@ -206,10 +206,11 @@ export function HostKeyChangedDialog() {
         </DialogHeader>
         <p className="text-sm whitespace-pre-line">{info?.message}</p>
         <div className="bg-muted/40 grid gap-2 rounded-md border p-3">
-          <Label htmlFor="hkc-confirm" className="text-sm">
+          <label htmlFor="hkc-confirm" className="text-sm leading-relaxed">
             Only after verifying the new fingerprint: type{" "}
-            <code className="text-foreground">{info?.host}</code> to remove the stored key.
-          </Label>
+            <code className="bg-background text-foreground rounded px-1">{info?.host}</code> to
+            remove the stored key.
+          </label>
           <div className="flex gap-2">
             <Input
               id="hkc-confirm"

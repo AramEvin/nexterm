@@ -1,4 +1,4 @@
-import { useState, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -98,6 +98,11 @@ function SetupForm({ onDone }: { onDone: () => void }) {
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (error && !busy) inputRef.current?.focus();
+  }, [error, busy]);
 
   async function onSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -137,6 +142,7 @@ function SetupForm({ onDone }: { onDone: () => void }) {
       <div className="grid gap-1.5">
         <Label htmlFor="vs-pw">Master password</Label>
         <Input
+          ref={inputRef}
           id="vs-pw"
           type="password"
           autoFocus
@@ -213,6 +219,12 @@ function UnlockForm({ onDone }: { onDone: (unlocked: boolean) => void }) {
   const [remember, setRemember] = useState(status?.remembered ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // After a failed attempt the field was disabled; give it focus back.
+  useEffect(() => {
+    if (error && !busy) inputRef.current?.focus();
+  }, [error, busy]);
 
   async function onSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -240,6 +252,7 @@ function UnlockForm({ onDone }: { onDone: (unlocked: boolean) => void }) {
       <div className="grid gap-1.5">
         <Label htmlFor="vu-pw">Master password</Label>
         <Input
+          ref={inputRef}
           id="vu-pw"
           type="password"
           autoFocus
