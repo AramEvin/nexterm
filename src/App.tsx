@@ -15,6 +15,9 @@ import { TabBar } from "@/components/layout/TabBar";
 import { WelcomePane } from "@/components/layout/WelcomePane";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { TerminalView } from "@/components/terminal/TerminalView";
+import { FileDialogs } from "@/components/files/FileDialogs";
+import { FilesView } from "@/components/files/FilesView";
+import { useFilesStore } from "@/stores/files";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
@@ -45,6 +48,7 @@ import { useUiStore } from "@/stores/ui";
 export default function App() {
   const loadAppInfo = useUiStore((s) => s.loadAppInfo);
   const tabs = useSessionStore((s) => s.tabs);
+  const filesTabs = useFilesStore((s) => s.tabs);
   const activeTabId = useSessionStore((s) => s.activeTabId);
   const loadLibrary = useLibraryStore((s) => s.load);
   const openConnect = useDialogStore((s) => s.openConnect);
@@ -87,6 +91,9 @@ export default function App() {
               {tabs.map((tab) => (
                 <TerminalView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
               ))}
+              {filesTabs.map((tab) => (
+                <FilesView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
+              ))}
             </div>
           </main>
         </div>
@@ -102,6 +109,7 @@ export default function App() {
       <HostKeyChangedDialog />
       <AlertDialog />
       <ConfirmDialog />
+      <FileDialogs />
     </TooltipProvider>
   );
 }

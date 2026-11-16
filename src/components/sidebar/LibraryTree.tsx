@@ -12,8 +12,10 @@ import {
   Star,
   StarOff,
   Trash2,
+  FolderSync,
 } from "lucide-react";
 
+import { openFilesForSaved } from "@/stores/files";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -376,6 +378,13 @@ function TreeMenu({
               }}
             >
               <Plug /> Connect
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => {
+                openFilesForSaved(target.session);
+              }}
+            >
+              <FolderSync /> Open in file manager
             </ContextMenuItem>
             <ContextMenuItem
               onSelect={() => {

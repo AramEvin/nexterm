@@ -55,14 +55,19 @@ export function ConfirmDialog() {
           </p>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={busy}>
+          <Button
+            variant="outline"
+            onClick={close}
+            disabled={busy}
+            autoFocus={request?.destructive === true}
+          >
             Cancel
           </Button>
           <Button
             variant={request?.destructive ? "destructive" : "default"}
             onClick={() => void confirm()}
             disabled={busy}
-            autoFocus
+            autoFocus={request?.destructive !== true}
           >
             {busy && <Loader2 className="animate-spin" />}
             {request?.confirmLabel}

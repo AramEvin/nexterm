@@ -1,5 +1,5 @@
 import { useState, type SyntheticEvent } from "react";
-import { Fingerprint, KeySquare, ShieldAlert } from "lucide-react";
+import { Check, Copy, Fingerprint, KeySquare, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -190,9 +190,7 @@ export function HostKeyChangedDialog() {
             <>
               Only after verifying the new fingerprint, remove the old key from{" "}
               <code className="text-foreground">~/.ssh/known_hosts</code> in PowerShell:
-              <code className="bg-background text-foreground mt-1 block rounded px-2 py-1 select-all">
-                ssh-keygen -R {knownHostsName}
-              </code>
+              <CopyCommand command={`ssh-keygen -R ${knownHostsName ?? ""}`} />
             </>
           ) : (
             <>
@@ -208,6 +206,33 @@ export function HostKeyChangedDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** A command in monospace with a Copy button. */
+function CopyCommand({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <span className="mt-1 flex items-center gap-2">
+      <code className="bg-background text-foreground min-w-0 flex-1 truncate rounded px-2 py-1 select-all">
+        {command}
+      </code>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          void navigator.clipboard.writeText(command).then(() => {
+            setCopied(true);
+            setTimeout(() => {
+              setCopied(false);
+            }, 1500);
+          });
+        }}
+      >
+        {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy"}
+      </Button>
+    </span>
   );
 }
 

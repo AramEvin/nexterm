@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Copy,
+  FolderOpen,
+  FolderSync,
   Home,
   Loader2,
   Pencil,
@@ -23,6 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { duplicateTab, reconnectTab } from "@/lib/connect";
 import { cn } from "@/lib/utils";
+import { openFilesForTerminal, useFilesStore, type FilesTab } from "@/stores/files";
 import { HOME_TAB, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
 
 interface TabBarProps {
@@ -110,6 +113,8 @@ function useTabDrag(moveTab: (tabId: string, targetId: string) => void) {
 /** Tab strip: pinned Home tab + one tab per session (scrolls horizontally when full). */
 export function TabBar({ onNewSession }: TabBarProps) {
   const tabs = useSessionStore((s) => s.tabs);
+  const filesTabs = useFilesStore((s) => s.tabs);
+  const openFiles = useFilesStore((s) => s.openTab);
   const activeTabId = useSessionStore((s) => s.activeTabId);
   const setActiveTab = useSessionStore((s) => s.setActiveTab);
   const moveTab = useSessionStore((s) => s.moveTab);
@@ -121,7 +126,7 @@ export function TabBar({ onNewSession }: TabBarProps) {
     scrollRef.current
       ?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(activeTabId)}"]`)
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeTabId, tabs.length]);
+  }, [activeTabId, tabs.length, filesTabs.length]);
 
   return (
     <div
@@ -167,6 +172,9 @@ export function TabBar({ onNewSession }: TabBarProps) {
             consumeDragClick={consumeDragClick}
           />
         ))}
+        {filesTabs.map((tab, i) => (
+          <FilesTabItem key={tab.id} tab={tab} number={i + 1} active={activeTabId === tab.id} />
+        ))}
       </div>
 
       <Tooltip>
@@ -183,7 +191,76 @@ export function TabBar({ onNewSession }: TabBarProps) {
         </TooltipTrigger>
         <TooltipContent>Quick connect</TooltipContent>
       </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="mr-1 mb-0.5 shrink-0"
+            aria-label="New file manager"
+            onClick={() => {
+              openFiles();
+            }}
+          >
+            <FolderOpen />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>File manager (SFTP)</TooltipContent>
+      </Tooltip>
     </div>
+  );
+}
+
+/** A file-manager tab (two panes). Title: the remote side, if any. */
+function FilesTabItem({ tab, number, active }: { tab: FilesTab; number: number; active: boolean }) {
+  const setActiveTab = useSessionStore((s) => s.setActiveTab);
+  const closeTab = useFilesStore((s) => s.closeTab);
+  const remote = tab.panes.find((p) => p.source && p.source.kind !== "local");
+  const title = remote ? `Files: ${remote.label}` : `Files ${String(number)}`;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          role="tab"
+          data-tab-id={tab.id}
+          aria-selected={active}
+          tabIndex={0}
+          title={title}
+          onClick={() => {
+            setActiveTab(tab.id);
+          }}
+          onAuxClick={(e) => {
+            if (e.button === 1) void closeTab(tab.id);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") setActiveTab(tab.id);
+          }}
+          className={cn(tabClass(active), "relative max-w-60")}
+        >
+          <FolderOpen className="text-brand size-3.5 shrink-0" />
+          <span className="truncate">{title}</span>
+          <button
+            type="button"
+            aria-label={`Close ${title}`}
+            className={cn(
+              "hover:bg-accent -mr-1 ml-1 shrink-0 rounded p-0.5",
+              !active && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              void closeTab(tab.id);
+            }}
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={() => void closeTab(tab.id)}>
+          <X /> Close tab
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -302,6 +379,14 @@ function SessionTabItem({
           onSelect={() => void duplicateTab(tab.id)}
         >
           <Copy /> Duplicate session
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={tab.connectionId === null}
+          onSelect={() => {
+            openFilesForTerminal(tab);
+          }}
+        >
+          <FolderSync /> Open files (SFTP)
         </ContextMenuItem>
         {canReconnect ? (
           <ContextMenuItem onSelect={() => void reconnectTab(tab.id)}>

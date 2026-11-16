@@ -21,6 +21,7 @@ import type {
   SshConnectRequest,
   SshSessionInfo,
 } from "@/types/ipc";
+import type { Endpoint, FsInfo, Listing, TransferEvent, TransferRequest } from "@/types/files";
 import type { Folder, Library, MoveRequest, SavedSession, SessionInput } from "@/types/library";
 
 /** Error thrown by every IPC wrapper. `code` mirrors the Rust `AppError` code. */
@@ -294,4 +295,71 @@ export function knownHostsList(): Promise<KnownHost[]> {
 
 export function knownHostsRemove(host: string, port: number): Promise<number> {
   return call<number>("known_hosts_remove", { host, port });
+}
+
+// ---- file manager -----------------------------------------------------------
+
+/** Open a saved session in a file-manager pane (SFTP). */
+export function sftpOpenSaved(
+  request: { sessionId: string; username?: string; password?: string },
+  onPrompt: (prompt: SshPrompt) => void,
+): Promise<FsInfo> {
+  return call<FsInfo>("sftp_open_saved", {
+    request,
+    onPrompt: new Channel<SshPrompt>(onPrompt),
+  });
+}
+
+/** Open the server of a terminal tab (reuses its remembered login). */
+export function sftpOpenConnection(
+  connectionId: string,
+  onPrompt: (prompt: SshPrompt) => void,
+): Promise<FsInfo> {
+  return call<FsInfo>("sftp_open_connection", {
+    connectionId,
+    onPrompt: new Channel<SshPrompt>(onPrompt),
+  });
+}
+
+export function sftpClose(fsId: string): Promise<void> {
+  return call<undefined>("sftp_close", { fsId });
+}
+
+export function fsHome(endpoint: Endpoint): Promise<string> {
+  return call<string>("fs_home", { endpoint });
+}
+
+export function fsList(endpoint: Endpoint, path: string): Promise<Listing> {
+  return call<Listing>("fs_list", { endpoint, path });
+}
+
+export function fsMkdir(endpoint: Endpoint, dir: string, name: string): Promise<string> {
+  return call<string>("fs_mkdir", { endpoint, dir, name });
+}
+
+export function fsRename(endpoint: Endpoint, path: string, newName: string): Promise<string> {
+  return call<string>("fs_rename", { endpoint, path, newName });
+}
+
+export function fsDelete(endpoint: Endpoint, paths: string[]): Promise<number> {
+  return call<number>("fs_delete", { endpoint, paths });
+}
+
+export function fsChmod(endpoint: Endpoint, paths: string[], mode: number): Promise<void> {
+  return call<undefined>("fs_chmod", { endpoint, paths, mode });
+}
+
+/** Queue a copy; returns the transfer id. */
+export function transferStart(
+  request: TransferRequest,
+  onEvent: (event: TransferEvent) => void,
+): Promise<string> {
+  return call<string>("transfer_start", {
+    request,
+    onEvent: new Channel<TransferEvent>(onEvent),
+  });
+}
+
+export function transferCancel(id: string): Promise<boolean> {
+  return call<boolean>("transfer_cancel", { id });
 }

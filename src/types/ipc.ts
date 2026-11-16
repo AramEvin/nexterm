@@ -15,6 +15,7 @@ export type AppErrorCode =
   | "HOST_KEY_REJECTED"
   | "CREDENTIALS_REQUIRED"
   | "CANCELLED"
+  | "FILE"
   | "IO"
   | "INTERNAL";
 

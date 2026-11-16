@@ -1,7 +1,8 @@
-import { KeyRound, Terminal, Zap } from "lucide-react";
+import { FolderOpen, KeyRound, Terminal, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useDialogStore } from "@/stores/dialogs";
+import { useFilesStore } from "@/stores/files";
 import { useVaultStore } from "@/stores/vault";
 
 interface WelcomePaneProps {
@@ -13,6 +14,7 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
   const initialized = useVaultStore((s) => s.status?.initialized ?? false);
   const openVaultSetup = useDialogStore((s) => s.openVaultSetup);
   const openCredentials = useDialogStore((s) => s.openCredentials);
+  const openFiles = useFilesStore((s) => s.openTab);
   return (
     <div className="flex h-full items-center justify-center p-8">
       <div className="flex max-w-md flex-col items-center gap-6 text-center">
@@ -29,13 +31,22 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
           <Button onClick={onQuickConnect}>
             <Zap /> Quick connect
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              openFiles();
+            }}
+          >
+            <FolderOpen /> File manager
+          </Button>
           <Button variant="outline" onClick={initialized ? openCredentials : openVaultSetup}>
             <KeyRound /> {initialized ? "Credentials" : "Set up vault"}
           </Button>
         </div>
         <p className="text-muted-foreground/70 text-xs">
           Tip: double-click a saved session to connect. Link a saved password or key in the
-          session&apos;s Login settings to skip typing it.
+          session&apos;s Login settings to skip typing it. Right-click a session → Open in file
+          manager to browse its files.
         </p>
       </div>
     </div>
