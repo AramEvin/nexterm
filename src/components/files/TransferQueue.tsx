@@ -31,7 +31,7 @@ export function TransferQueue() {
   if (items.length === 0) return null;
 
   return (
-    <div className="bg-sidebar flex max-h-[40%] shrink-0 flex-col border-t">
+    <div className="bg-sidebar flex max-h-[32%] shrink-0 flex-col border-t">
       <button
         type="button"
         className="hover:bg-accent/50 flex h-8 shrink-0 items-center gap-3 px-3 text-left text-xs"

@@ -64,7 +64,7 @@ export function parseOctal(text: string): number | null {
 }
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
+  year: "2-digit",
   month: "2-digit",
   day: "2-digit",
   hour: "2-digit",

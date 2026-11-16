@@ -62,6 +62,17 @@ export interface ConnectMeta {
 
 export const HOME_TAB = "home";
 
+/** Ids of non-terminal tabs (file managers) that may become active. */
+const externalTabs = new Set<string>();
+
+export function registerExternalTab(id: string): void {
+  externalTabs.add(id);
+}
+
+export function unregisterExternalTab(id: string): void {
+  externalTabs.delete(id);
+}
+
 interface SessionState {
   tabs: SessionTab[];
   /** `HOME_TAB` or a tab id. */
@@ -164,7 +175,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
     connecting: false,
 
     setActiveTab: (id) => {
-      if (id === HOME_TAB || findTab(id)) set({ activeTabId: id });
+      if (id === HOME_TAB || externalTabs.has(id) || findTab(id)) set({ activeTabId: id });
     },
 
     connect: async ({ host, port, username, password }, meta = {}) => {

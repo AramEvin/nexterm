@@ -340,7 +340,9 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
       ) : pane.status === "needsLogin" ? (
         <PaneLogin
           reason={pane.error ?? "Enter your login."}
-          onSubmit={(login) => void setSource(tabId, index, pane.source, login)}
+          onSubmit={(login) =>
+            void setSource(tabId, index, pane.source, login, pane.path || undefined)
+          }
           onCancel={() => void setSource(tabId, index, null)}
         />
       ) : pane.status === "error" ? (
@@ -348,7 +350,10 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
           <ShieldAlert className="text-destructive size-6" />
           <span className="max-w-sm text-center break-words">{pane.error}</span>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => void setSource(tabId, index, pane.source)}>
+            <Button
+              size="sm"
+              onClick={() => void setSource(tabId, index, pane.source, undefined, pane.path)}
+            >
               <RefreshCw /> Reconnect
             </Button>
             <Button

@@ -117,7 +117,11 @@ impl AppError {
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         // Log the full (internal) error once, at the moment it crosses the IPC boundary.
-        tracing::warn!(code = self.code(), error = %self, "command failed");
+        // File-manager messages name the user's files, so only their code is logged.
+        match self {
+            Self::FileOp(_) => tracing::warn!(code = self.code(), "command failed"),
+            _ => tracing::warn!(code = self.code(), error = %self, "command failed"),
+        }
 
         let mut s = serializer.serialize_struct("AppError", 2)?;
         s.serialize_field("code", self.code())?;

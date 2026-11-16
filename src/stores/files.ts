@@ -9,7 +9,12 @@ import { handleConnectError } from "@/lib/connect";
 import { IpcError, fsList, sftpClose, sftpOpenConnection, sftpOpenSaved, fsHome } from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
 import { usePromptStore } from "@/stores/prompts";
-import { HOME_TAB, useSessionStore } from "@/stores/session";
+import {
+  HOME_TAB,
+  registerExternalTab,
+  unregisterExternalTab,
+  useSessionStore,
+} from "@/stores/session";
 import type { Endpoint, Listing } from "@/types/files";
 
 /** Where a pane points. */
@@ -92,6 +97,8 @@ interface FilesState {
     pane: PaneIndex,
     source: PaneSource | null,
     login?: { username?: string; password?: string },
+    /** Folder to open after connecting (reconnect); falls back to home. */
+    startPath?: string,
   ) => Promise<void>;
   /** Open a folder. Resolves true on success. */
   navigate: (tabId: string, pane: PaneIndex, path: string) => Promise<boolean>;
@@ -144,6 +151,7 @@ export const useFilesStore = create<FilesState>()((set, get) => {
         activePane: right ? 1 : 0,
       };
       set((s) => ({ tabs: [...s.tabs, tab] }));
+      registerExternalTab(id);
       useSessionStore.getState().setActiveTab(id);
       void get().setSource(id, 0, { kind: "local" });
       if (right) void get().setSource(id, 1, right);
@@ -155,6 +163,7 @@ export const useFilesStore = create<FilesState>()((set, get) => {
       if (!tab) return;
       tab.panes.forEach(closeRemote);
       set((s) => ({ tabs: s.tabs.filter((t) => t.id !== id) }));
+      unregisterExternalTab(id);
       const sessions = useSessionStore.getState();
       if (sessions.activeTabId === id) {
         const remaining = get().tabs;
@@ -171,7 +180,7 @@ export const useFilesStore = create<FilesState>()((set, get) => {
       set((s) => ({ tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, activePane: pane } : t)) }));
     },
 
-    setSource: async (tabId, idx, source, login) => {
+    setSource: async (tabId, idx, source, login, startPath) => {
       closeRemote(getPane(tabId, idx));
       const fresh = emptyPane(source);
       patchPane(tabId, idx, { ...fresh, showHidden: getPane(tabId, idx)?.showHidden ?? false });
@@ -179,7 +188,9 @@ export const useFilesStore = create<FilesState>()((set, get) => {
       if (source.kind === "local") {
         const home = await fsHome({ kind: "local" }).catch(() => "");
         patchPane(tabId, idx, { status: "ready", home });
-        await get().navigate(tabId, idx, home);
+        if (!startPath || !(await get().navigate(tabId, idx, startPath))) {
+          await get().navigate(tabId, idx, home);
+        }
         return;
       }
       try {
@@ -198,13 +209,16 @@ export const useFilesStore = create<FilesState>()((set, get) => {
           status: "ready",
           home: info.home,
         });
-        await get().navigate(tabId, idx, info.home);
+        if (!startPath || !(await get().navigate(tabId, idx, startPath))) {
+          await get().navigate(tabId, idx, info.home);
+        }
       } catch (err) {
         if (getPane(tabId, idx)?.source !== source) return;
         const { code, message } =
           err instanceof IpcError ? err : { code: "INTERNAL" as const, message: "Failed." };
         if (code === "CREDENTIALS_REQUIRED") {
-          patchPane(tabId, idx, { status: "needsLogin", error: message });
+          // Remember the folder so the login form can reopen it.
+          patchPane(tabId, idx, { status: "needsLogin", error: message, path: startPath ?? "" });
           return;
         }
         patchPane(tabId, idx, {
@@ -219,7 +233,7 @@ export const useFilesStore = create<FilesState>()((set, get) => {
         handleConnectError(code, message, {
           host: source.host,
           port: source.port,
-          retry: () => void get().setSource(tabId, idx, source, login),
+          retry: () => void get().setSource(tabId, idx, source, login, startPath),
         });
       }
     },

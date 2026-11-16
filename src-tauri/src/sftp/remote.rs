@@ -283,8 +283,10 @@ pub fn sftp_error(err: &SftpError, what: &str) -> AppError {
         SftpError::Timeout => AppError::Connection("The server did not respond in time.".into()),
         SftpError::IO(_) => AppError::Connection("The SFTP connection was lost.".into()),
         SftpError::Limited(m) => AppError::FileOp(format!("Server limit exceeded: {m}")),
-        SftpError::UnexpectedPacket | SftpError::UnexpectedBehavior(_) => {
-            AppError::Connection("The server sent an unexpected SFTP response.".into())
-        }
+        // Seen when the server's sftp-server process ends (killed, idle
+        // timeout) while the SSH connection itself is still up.
+        SftpError::UnexpectedPacket | SftpError::UnexpectedBehavior(_) => AppError::Connection(
+            "The SFTP session ended unexpectedly. Reconnect to continue.".into(),
+        ),
     }
 }

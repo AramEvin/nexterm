@@ -52,20 +52,22 @@ export function FileList({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(400);
+  const [width, setWidth] = useState(800);
 
+  // Narrow panes drop the least important columns instead of scrolling sideways.
+  const showPerms = remote && width >= 520;
+  const showOwner = remote && width >= 620;
   const columns: Column[] = useMemo(
     () => [
-      { key: "name", label: "Name", width: "minmax(10rem,1fr)" },
-      { key: "size", label: "Size", width: "5.5rem", align: "right" },
-      { key: "modified", label: "Modified", width: "9.5rem" },
-      ...(remote
-        ? ([
-            { key: "permissions", label: "Permissions", width: "6.5rem" },
-            { key: "owner", label: "Owner", width: "6rem" },
-          ] satisfies Column[])
+      { key: "name", label: "Name", width: "minmax(8rem,1fr)" },
+      { key: "size", label: "Size", width: "4.75rem", align: "right" },
+      { key: "modified", label: "Modified", width: "8.25rem" },
+      ...(showPerms
+        ? ([{ key: "permissions", label: "Permissions", width: "6rem" }] satisfies Column[])
         : []),
+      ...(showOwner ? ([{ key: "owner", label: "Owner", width: "5rem" }] satisfies Column[]) : []),
     ],
-    [remote],
+    [showPerms, showOwner],
   );
   const grid = columns.map((c) => c.width).join(" ");
 
@@ -74,9 +76,11 @@ export function FileList({
     if (!el) return;
     const ro = new ResizeObserver(() => {
       setHeight(el.clientHeight);
+      setWidth(el.clientWidth);
     });
     ro.observe(el);
     setHeight(el.clientHeight);
+    setWidth(el.clientWidth);
     return () => {
       ro.disconnect();
     };
@@ -129,7 +133,7 @@ export function FileList({
         role="grid"
         aria-multiselectable
         aria-rowcount={entries.length}
-        className="relative min-h-0 flex-1 overflow-auto"
+        className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
         onScroll={(e) => {
           setScrollTop(e.currentTarget.scrollTop);
         }}
@@ -188,13 +192,16 @@ export function FileList({
                 <span className="text-muted-foreground truncate px-1 tabular-nums">
                   {formatDate(entry.modified)}
                 </span>
-                {remote && (
-                  <>
-                    <span className="text-muted-foreground truncate px-1 font-mono text-xs">
-                      {formatMode(entry.permissions)}
-                    </span>
-                    <span className="text-muted-foreground truncate px-1">{entry.owner ?? ""}</span>
-                  </>
+                {showPerms && (
+                  <span
+                    className="text-muted-foreground truncate px-1 font-mono text-xs"
+                    title={entry.group ? `group ${entry.group}` : undefined}
+                  >
+                    {formatMode(entry.permissions)}
+                  </span>
+                )}
+                {showOwner && (
+                  <span className="text-muted-foreground truncate px-1">{entry.owner ?? ""}</span>
                 )}
               </div>
             );
