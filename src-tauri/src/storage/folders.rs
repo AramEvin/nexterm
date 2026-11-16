@@ -14,6 +14,7 @@ fn row_to_folder(row: &rusqlite::Row<'_>) -> rusqlite::Result<Folder> {
         id: row.get("id")?,
         parent_id: row.get("parent_id")?,
         name: row.get("name")?,
+        default_credential_id: row.get("default_credential_id")?,
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
@@ -22,7 +23,7 @@ fn row_to_folder(row: &rusqlite::Row<'_>) -> rusqlite::Result<Folder> {
 
 pub fn list(conn: &Connection) -> AppResult<Vec<Folder>> {
     let mut stmt = conn.prepare(
-        "SELECT id, parent_id, name, sort_order, created_at, updated_at
+        "SELECT id, parent_id, name, default_credential_id, sort_order, created_at, updated_at
          FROM folders ORDER BY sort_order, name COLLATE NOCASE",
     )?;
     let rows = stmt.query_map([], row_to_folder)?;
@@ -31,7 +32,8 @@ pub fn list(conn: &Connection) -> AppResult<Vec<Folder>> {
 
 pub fn get(conn: &Connection, id: &str) -> AppResult<Folder> {
     conn.query_row(
-        "SELECT id, parent_id, name, sort_order, created_at, updated_at FROM folders WHERE id = ?1",
+        "SELECT id, parent_id, name, default_credential_id, sort_order, created_at, updated_at
+         FROM folders WHERE id = ?1",
         [id],
         row_to_folder,
     )
@@ -106,6 +108,7 @@ pub fn create(conn: &Connection, parent_id: Option<&str>, name: &str) -> AppResu
         id: Uuid::new_v4().to_string(),
         parent_id: parent_id.clone(),
         name,
+        default_credential_id: None,
         sort_order: next_sort_order(conn, parent_id.as_deref())?,
         created_at: now,
         updated_at: now,
@@ -181,6 +184,41 @@ pub fn move_to(
     )?;
     tx.commit()?;
     Ok(())
+}
+
+/// Set (or clear) the folder's default credential.
+pub fn set_default_credential(
+    conn: &Connection,
+    id: &str,
+    credential_id: Option<&str>,
+) -> AppResult<Folder> {
+    let id = validate::id(id)?;
+    let credential_id = validate::optional_id(credential_id)?;
+    if let Some(cid) = credential_id.as_deref() {
+        ensure_credential(conn, cid)?;
+    }
+    let changed = conn.execute(
+        "UPDATE folders SET default_credential_id = ?2, updated_at = ?3 WHERE id = ?1",
+        params![id, credential_id, now_ms()],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound("Folder".into()));
+    }
+    get(conn, &id)
+}
+
+/// Fail with NOT_FOUND unless the credential exists.
+pub(super) fn ensure_credential(conn: &Connection, id: &str) -> AppResult<()> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM credentials WHERE id = ?1)",
+        [id],
+        |r| r.get(0),
+    )?;
+    if exists {
+        Ok(())
+    } else {
+        Err(AppError::NotFound("Credential".into()))
+    }
 }
 
 /// Delete a folder and everything inside it. Returns the number of sessions removed.

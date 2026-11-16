@@ -23,6 +23,8 @@ struct Valid {
     host: String,
     port: u16,
     username: String,
+    auth_method: String,
+    credential_id: Option<String>,
     color: Option<String>,
     notes: String,
     favorite: bool,
@@ -34,6 +36,10 @@ fn validate_input(conn: &Connection, input: &SessionInput) -> AppResult<Valid> {
     if let Some(f) = folder_id.as_deref() {
         folders::get(conn, f)?;
     }
+    let credential_id = validate::optional_id(input.credential_id.as_deref())?;
+    if let Some(cid) = credential_id.as_deref() {
+        folders::ensure_credential(conn, cid)?;
+    }
     Ok(Valid {
         folder_id,
         name: validate::session_name(&input.name)?,
@@ -41,6 +47,8 @@ fn validate_input(conn: &Connection, input: &SessionInput) -> AppResult<Valid> {
         host: validate::host(&input.host)?,
         port: validate::port(input.port)?,
         username: validate::optional_username(&input.username)?,
+        auth_method: validate::auth_method(&input.auth_method)?,
+        credential_id,
         color: validate::color(input.color.as_deref())?,
         notes: validate::notes(&input.notes)?,
         favorite: input.favorite,
@@ -164,9 +172,10 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
     let tx = conn.transaction()?;
     let order = next_sort_order(&tx, v.folder_id.as_deref())?;
     tx.execute(
-        "INSERT INTO sessions (id, folder_id, name, protocol, host, port, username, color, notes,
-                               favorite, sort_order, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
+        "INSERT INTO sessions (id, folder_id, name, protocol, host, port, username, auth_method,
+                               credential_id, color, notes, favorite, sort_order, created_at,
+                               updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
         params![
             id,
             v.folder_id,
@@ -175,6 +184,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
             v.host,
             v.port,
             v.username,
+            v.auth_method,
+            v.credential_id,
             v.color,
             v.notes,
             v.favorite,
@@ -198,8 +209,8 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
     };
     tx.execute(
         "UPDATE sessions SET folder_id = ?2, name = ?3, protocol = ?4, host = ?5, port = ?6,
-                username = ?7, color = ?8, notes = ?9, favorite = ?10, sort_order = ?11,
-                updated_at = ?12
+                username = ?7, auth_method = ?8, credential_id = ?9, color = ?10, notes = ?11,
+                favorite = ?12, sort_order = ?13, updated_at = ?14
          WHERE id = ?1",
         params![
             existing.id,
@@ -209,6 +220,8 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
             v.host,
             v.port,
             v.username,
+            v.auth_method,
+            v.credential_id,
             v.color,
             v.notes,
             v.favorite,
@@ -243,6 +256,8 @@ pub fn duplicate(conn: &mut Connection, id: &str) -> AppResult<SavedSession> {
         host: src.host.clone(),
         port: u32::from(src.port),
         username: src.username.clone(),
+        auth_method: src.auth_method.clone(),
+        credential_id: src.credential_id.clone(),
         color: src.color.clone(),
         notes: src.notes.clone(),
         favorite: false,
@@ -327,6 +342,8 @@ mod tests {
             host: "10.0.0.1".into(),
             port: 22,
             username: "root".into(),
+            auth_method: "password".into(),
+            credential_id: None,
             color: Some("#14B8A6".into()),
             notes: "primary db".into(),
             favorite: false,

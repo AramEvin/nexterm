@@ -22,7 +22,7 @@ impl LibraryDb {
         }))
     }
 
-    fn db(&self) -> AppResult<Database> {
+    pub(crate) fn db(&self) -> AppResult<Database> {
         self.0
             .as_ref()
             .cloned()

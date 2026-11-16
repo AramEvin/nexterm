@@ -1,10 +1,12 @@
-//! In-memory store of connection parameters for open tabs.
+//! What each open tab needs to reconnect / duplicate.
 //!
-//! Reconnect and Duplicate need the credentials again, but the frontend never
-//! keeps the password. Instead, each tab owns an opaque `connection_id`; the
-//! parameters (password as `SecretString`) live here, in Rust memory only,
-//! until the tab is closed (`ssh_forget`) or the app exits. Nothing is written
-//! to disk. Phase 4 replaces the stored password with a vault `credential_id`.
+//! Each tab owns an opaque `connection_id`. Behind it is a [`ConnectSpec`]:
+//! - `Direct`: a quick connect. The typed password lives here, in Rust memory
+//!   only, until the tab closes (`ssh_forget`) or the app exits.
+//! - `Saved`: a saved session. Only the session id (plus anything the user had
+//!   to type) is kept; host, credentials and auth method are re-read from the
+//!   database and the vault on every (re)connect, so a locked vault or an
+//!   edited session takes effect immediately.
 
 use std::collections::HashMap;
 
@@ -12,29 +14,61 @@ use secrecy::{ExposeSecret, SecretString};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::SshConnectParams;
+use super::SshAuth;
 use crate::error::{AppError, AppResult};
 
-/// Upper bound on remembered connections (one per open tab). Protects against
-/// a buggy or hostile frontend growing this map without limit.
+/// Upper bound on remembered connections (one per open tab).
 pub const MAX_CONNECTIONS: usize = 256;
+
+pub enum ConnectSpec {
+    Direct {
+        host: String,
+        port: u16,
+        username: String,
+        auth: SshAuth,
+    },
+    Saved {
+        session_id: String,
+        /// Typed at connect time because the session had none.
+        username: Option<String>,
+        /// Typed at connect time because no credential was linked.
+        password: Option<SecretString>,
+    },
+}
+
+impl ConnectSpec {
+    /// Explicit deep copy; every copy of a secret is visible in code review.
+    pub fn duplicate(&self) -> Self {
+        match self {
+            Self::Direct {
+                host,
+                port,
+                username,
+                auth,
+            } => Self::Direct {
+                host: host.clone(),
+                port: *port,
+                username: username.clone(),
+                auth: auth.duplicate(),
+            },
+            Self::Saved {
+                session_id,
+                username,
+                password,
+            } => Self::Saved {
+                session_id: session_id.clone(),
+                username: username.clone(),
+                password: password
+                    .as_ref()
+                    .map(|p| SecretString::from(p.expose_secret().to_owned())),
+            },
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct SshConnections {
-    map: Mutex<HashMap<Uuid, SshConnectParams>>,
-}
-
-impl SshConnectParams {
-    /// Explicit deep copy. `SecretString` is deliberately not `Clone`, so
-    /// every copy of a password is visible in the code.
-    pub fn duplicate(&self) -> Self {
-        Self {
-            host: self.host.clone(),
-            port: self.port,
-            username: self.username.clone(),
-            password: SecretString::from(self.password.expose_secret().to_owned()),
-        }
-    }
+    map: Mutex<HashMap<Uuid, ConnectSpec>>,
 }
 
 impl SshConnections {
@@ -42,8 +76,7 @@ impl SshConnections {
         Self::default()
     }
 
-    /// Remember `params` under a new random id.
-    pub async fn insert(&self, params: SshConnectParams) -> AppResult<Uuid> {
+    pub async fn insert(&self, spec: ConnectSpec) -> AppResult<Uuid> {
         let mut map = self.map.lock().await;
         if map.len() >= MAX_CONNECTIONS {
             return Err(AppError::Validation(format!(
@@ -51,22 +84,20 @@ impl SshConnections {
             )));
         }
         let id = Uuid::new_v4();
-        map.insert(id, params);
+        map.insert(id, spec);
         Ok(id)
     }
 
-    /// A copy of the stored parameters, for opening another connection.
-    pub async fn get_copy(&self, id: Uuid) -> AppResult<SshConnectParams> {
+    pub async fn get_copy(&self, id: Uuid) -> AppResult<ConnectSpec> {
         self.map
             .lock()
             .await
             .get(&id)
-            .map(SshConnectParams::duplicate)
+            .map(ConnectSpec::duplicate)
             .ok_or_else(|| AppError::NotFound("Connection".into()))
     }
 
-    /// Drop the stored parameters (the password is zeroized on drop).
-    /// Returns whether an entry existed.
+    /// Drop the spec (typed passwords are zeroized on drop).
     pub async fn remove(&self, id: Uuid) -> bool {
         self.map.lock().await.remove(&id).is_some()
     }
@@ -84,45 +115,39 @@ impl SshConnections {
 mod tests {
     use super::*;
 
-    fn params(host: &str) -> SshConnectParams {
-        SshConnectParams {
-            host: host.into(),
+    fn direct(pw: &str) -> ConnectSpec {
+        ConnectSpec::Direct {
+            host: "h".into(),
             port: 22,
             username: "u".into(),
-            password: SecretString::from("pw"),
+            auth: SshAuth::Password(SecretString::from(pw.to_string())),
         }
     }
 
     #[tokio::test]
     async fn insert_copy_remove() {
         let store = SshConnections::new();
-        let id = store.insert(params("a")).await.unwrap();
-        let copy = store.get_copy(id).await.unwrap();
-        assert_eq!(copy.host, "a");
-        assert_eq!(copy.password.expose_secret(), "pw");
+        let id = store.insert(direct("pw")).await.unwrap();
+        match store.get_copy(id).await.unwrap() {
+            ConnectSpec::Direct {
+                auth: SshAuth::Password(p),
+                ..
+            } => assert_eq!(p.expose_secret(), "pw"),
+            _ => panic!("wrong variant"),
+        }
         assert!(store.remove(id).await);
         assert!(!store.remove(id).await);
-        assert_eq!(store.get_copy(id).await.unwrap_err().code(), "NOT_FOUND");
-    }
-
-    #[test]
-    fn debug_redacts_password() {
-        let p = SshConnectParams {
-            password: SecretString::from("hunter2-secret"),
-            ..params("h")
-        };
-        let dbg = format!("{:?}", p.duplicate());
-        assert!(!dbg.contains("hunter2"), "password leaked: {dbg}");
+        assert_eq!(store.get_copy(id).await.err().unwrap().code(), "NOT_FOUND");
     }
 
     #[tokio::test]
     async fn enforces_capacity() {
         let store = SshConnections::new();
         for _ in 0..MAX_CONNECTIONS {
-            store.insert(params("h")).await.unwrap();
+            store.insert(direct("p")).await.unwrap();
         }
         assert_eq!(
-            store.insert(params("h")).await.unwrap_err().code(),
+            store.insert(direct("p")).await.err().unwrap().code(),
             "VALIDATION"
         );
     }

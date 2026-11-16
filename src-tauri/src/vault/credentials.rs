@@ -567,6 +567,8 @@ mod tests {
                 host: "10.0.0.1".into(),
                 port: 22,
                 username: String::new(),
+                auth_method: "password".into(),
+                credential_id: None,
                 color: None,
                 notes: String::new(),
                 favorite: false,

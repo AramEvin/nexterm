@@ -10,6 +10,8 @@ pub struct Folder {
     pub id: String,
     pub parent_id: Option<String>,
     pub name: String,
+    /// Credential used by sessions in this folder (and subfolders) that have none.
+    pub default_credential_id: Option<String>,
     pub sort_order: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -49,6 +51,12 @@ pub struct SessionInput {
     pub port: u32,
     #[serde(default)]
     pub username: String,
+    /// password | publickey | agent | keyboard-interactive
+    #[serde(default = "default_auth_method")]
+    pub auth_method: String,
+    /// Vault credential; `None` = inherit the folder default (or ask).
+    #[serde(default)]
+    pub credential_id: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
@@ -57,6 +65,10 @@ pub struct SessionInput {
     pub favorite: bool,
     #[serde(default)]
     pub tags: Vec<String>,
+}
+
+fn default_auth_method() -> String {
+    "password".into()
 }
 
 /// Everything the sidebar needs, in one round trip.

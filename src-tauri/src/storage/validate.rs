@@ -109,6 +109,18 @@ pub fn tags(raw: &[String]) -> AppResult<Vec<String>> {
     Ok(out)
 }
 
+pub const AUTH_METHODS: &[&str] = &["password", "publickey", "agent", "keyboard-interactive"];
+
+pub fn auth_method(raw: &str) -> AppResult<String> {
+    if AUTH_METHODS.contains(&raw) {
+        Ok(raw.to_string())
+    } else {
+        Err(AppError::Validation(
+            "Unknown authentication method.".into(),
+        ))
+    }
+}
+
 /// Ids come from the frontend; only accept well-formed UUIDs.
 pub fn id(raw: &str) -> AppResult<String> {
     Uuid::parse_str(raw)

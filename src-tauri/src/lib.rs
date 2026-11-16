@@ -18,11 +18,18 @@ pub mod ssh;
 pub mod storage;
 pub mod vault;
 
-use tauri::Manager;
+use std::sync::Arc;
+use std::time::Duration;
+
+use tauri::{Emitter, Manager};
+
+/// How often the auto-lock timer is checked.
+const AUTO_LOCK_CHECK: Duration = Duration::from_secs(15);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> anyhow::Result<()> {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_dir = app.path().data_dir()?;
             let guard = logging::init(logging::log_dir(&data_dir))?;
@@ -39,6 +46,37 @@ pub fn run() -> anyhow::Result<()> {
             if db.is_ok() {
                 tracing::info!(path = %db_path.display(), "session database opened");
             }
+            let vault = db.as_ref().ok().map(|db| {
+                Arc::new(vault::Vault::new(
+                    db.clone(),
+                    Arc::new(vault::keychain::OsKeyStore),
+                ))
+            });
+            if let Some(v) = &vault {
+                if let Err(e) = v.unlock_from_device() {
+                    tracing::warn!(error = %e, "could not unlock the vault from the device keychain");
+                }
+                // Auto-lock: check idle time periodically and tell the UI.
+                let (v, handle) = (Arc::clone(v), app.handle().clone());
+                tauri::async_runtime::spawn(async move {
+                    let mut tick = tokio::time::interval(AUTO_LOCK_CHECK);
+                    loop {
+                        tick.tick().await;
+                        if matches!(v.lock_if_idle(), Ok(true)) {
+                            let _ = handle.emit("vault-locked", ());
+                        }
+                    }
+                });
+            }
+            app.manage(commands::ssh::VaultState(vault));
+            app.manage(commands::ssh::SshContext {
+                broker: Arc::new(ssh::PromptBroker::new()),
+                openssh_known_hosts: app
+                    .path()
+                    .home_dir()
+                    .ok()
+                    .map(|h| h.join(".ssh").join("known_hosts")),
+            });
             app.manage(commands::library::LibraryDb::new(db));
             Ok(())
         })
@@ -63,6 +101,24 @@ pub fn run() -> anyhow::Result<()> {
             commands::ssh::ssh_reconnect,
             commands::ssh::ssh_duplicate,
             commands::ssh::ssh_forget,
+            commands::ssh::ssh_connect_saved,
+            commands::ssh::ssh_prompt_respond,
+            commands::vault::vault_status,
+            commands::vault::vault_setup,
+            commands::vault::vault_unlock,
+            commands::vault::vault_lock,
+            commands::vault::vault_forget_device,
+            commands::vault::vault_change_password,
+            commands::vault::vault_set_auto_lock,
+            commands::vault::vault_touch,
+            commands::vault::credential_list,
+            commands::vault::credential_create_password,
+            commands::vault::credential_import_key,
+            commands::vault::credential_update,
+            commands::vault::credential_delete,
+            commands::vault::folder_set_default_credential,
+            commands::vault::known_hosts_list,
+            commands::vault::known_hosts_remove,
         ])
         .run(tauri::generate_context!())?;
 

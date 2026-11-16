@@ -112,6 +112,8 @@ jobs:
           USER_NAME: ntest
           USER_PASSWORD: Test-Pass-123
           PASSWORD_ACCESS: "true"
+          # Public half of the test-only key in src-tauri/tests/fixtures.
+          PUBLIC_KEY: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICx6sXLiohIuTTar0Cgnsgda8/YG1XYt547ikog84PJG nexterm-test-only"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -122,10 +124,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - name: Install Tauri Linux build dependencies
+      - name: Install Tauri Linux build dependencies (+ ssh-agent for the agent test)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev openssh-client
       - run: npm ci && npm run build
       - name: Wait for sshd
         run: for i in $(seq 1 30); do nc -z 127.0.0.1 2222 && exit 0; sleep 2; done; exit 1

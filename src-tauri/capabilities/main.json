@@ -26,6 +26,24 @@
     "allow-ssh-disconnect",
     "allow-ssh-reconnect",
     "allow-ssh-duplicate",
-    "allow-ssh-forget"
+    "allow-ssh-forget",
+    "allow-ssh-connect-saved",
+    "allow-ssh-prompt-respond",
+    "allow-vault-status",
+    "allow-vault-setup",
+    "allow-vault-unlock",
+    "allow-vault-lock",
+    "allow-vault-forget-device",
+    "allow-vault-change-password",
+    "allow-vault-set-auto-lock",
+    "allow-vault-touch",
+    "allow-credential-list",
+    "allow-credential-create-password",
+    "allow-credential-import-key",
+    "allow-credential-update",
+    "allow-credential-delete",
+    "allow-folder-set-default-credential",
+    "allow-known-hosts-list",
+    "allow-known-hosts-remove"
   ]
 }
