@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { baseName } from "@/lib/files";
 import { editStart, editStop, IpcError } from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
+import { useFilesStore } from "@/stores/files";
 import type { EditEvent, Endpoint } from "@/types/files";
 
 export type EditStatus = "opening" | "editing" | "closed";
@@ -13,6 +14,7 @@ export interface EditItem {
   backendId: string | null;
   name: string;
   remotePath: string;
+  endpoint: Endpoint;
   /** Pane label ("user@host:port"). */
   where: string;
   status: EditStatus;
@@ -40,13 +42,20 @@ export const useEditStore = create<EditState>()((set, get) => {
       case "opened":
         patch(id, { status: "editing", editor: event.editor });
         break;
-      case "uploaded":
+      case "uploaded": {
+        const item = get().items.find((e) => e.id === id);
+        if (item) {
+          // Show the new size / time in panes that show this folder.
+          const dir = item.remotePath.slice(0, item.remotePath.lastIndexOf("/")) || "/";
+          useFilesStore.getState().refreshWhere(item.endpoint, dir);
+        }
         patch(id, {
           lastSavedAt: event.atMs,
           saves: (get().items.find((e) => e.id === id)?.saves ?? 0) + 1,
           error: null,
         });
         break;
+      }
       case "failed":
         patch(id, { error: event.message });
         break;
@@ -75,6 +84,7 @@ export const useEditStore = create<EditState>()((set, get) => {
             backendId: null,
             name: baseName(path),
             remotePath: path,
+            endpoint,
             where,
             status: "opening",
             editor: "",

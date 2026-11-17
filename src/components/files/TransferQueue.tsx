@@ -50,7 +50,9 @@ export function TransferQueue() {
           {editing > 0 && `${String(editing)} editing · `}
           {active.length > 0
             ? `${String(active.length)} active · ${formatBytes(doneBytes)} of ${formatBytes(totalBytes)}${speed > 0 ? ` · ${formatSpeed(speed)}` : ""}`
-            : `${String(items.length)} finished`}
+            : items.length > 0
+              ? `${String(items.length)} finished`
+              : ""}
           {failed > 0 && <span className="text-destructive"> · {failed} failed</span>}
         </span>
         <span className="flex-1" />

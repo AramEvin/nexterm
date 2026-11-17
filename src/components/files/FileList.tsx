@@ -170,6 +170,10 @@ export function FileList({
                 onPointerDown={(e) => {
                   onRowPointerDown(index, e);
                 }}
+                onMouseDown={(e) => {
+                  // A double-click must not select the file name's text.
+                  if (e.detail > 1) e.preventDefault();
+                }}
                 onClick={(e) => {
                   onRowClick(index, e);
                 }}

@@ -23,8 +23,8 @@ import { isFileProtocol, type AuthMethod, type Protocol, type SessionInput } fro
 /** Protocols shown in the picker; only SSH is available in this version. */
 const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
   { value: "ssh", label: "SSH", available: true },
-  { value: "ftps", label: "FTPS (FTP over TLS) — file manager", available: true },
-  { value: "ftp", label: "FTP (unencrypted) — file manager", available: true },
+  { value: "ftps", label: "FTPS", available: true },
+  { value: "ftp", label: "FTP (unencrypted)", available: true },
   { value: "telnet", label: "Telnet (Phase 8)", available: false },
   { value: "serial", label: "Serial / COM (Phase 8)", available: false },
   { value: "local", label: "Local terminal (Phase 8)", available: false },
