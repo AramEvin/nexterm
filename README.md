@@ -3,7 +3,7 @@
 A free, open-source, security-focused SSH & SFTP client for Windows (Linux/macOS
 later): a modern alternative to MobaXterm.
 
-> **Status: Phase 5 (part 1).** WinSCP-style file manager (SFTP, local ↔ remote and server ↔ server); encrypted credential vault; key/agent/2FA login; strict host-key verification; saved sessions in folders; SSH tabs.
+> **Status: Phase 5.** WinSCP-style file manager (SFTP, FTP, FTPS; local ↔ remote and server ↔ server), SFTP panel next to terminals, edit remote files in Notepad; encrypted credential vault; key/agent/2FA login; strict host-key verification; saved sessions in folders; SSH tabs.
 
 ## Planned v1 features
 
@@ -17,6 +17,13 @@ later): a modern alternative to MobaXterm.
 - MSI/NSIS installers with signed auto-update
 
 ## Current features
+
+**Phase 5 (part 2): FTP/FTPS, side panel, editing**
+
+- FTP and FTPS (explicit TLS) saved sessions; they open in the file manager. Plain FTP is marked **Unencrypted** everywhere
+- FTPS certificates: CA-signed ones are accepted; self-signed ones show their fingerprint (also in OpenSSL's format) and can be saved; a changed certificate blocks the connection
+- SFTP panel next to each SSH terminal (same login): browse, Upload…, Download…, drop files from Explorer
+- Edit a remote file in Notepad (F4 or double-click): every save is uploaded back; the local copy is deleted when you're done
 
 **Phase 5 (part 1): file manager**
 

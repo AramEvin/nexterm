@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-17 — Phase 5 part 2: FTP/FTPS, SFTP side panel, edit remote files
+
+### Added
+
+- FTP and FTPS (explicit TLS, `AUTH TLS` + `PROT P`) as saved-session protocols. They open in the
+  file manager (double-click, location picker) and work with every file action and transfer,
+  including relay to and from SFTP. Password from the vault, typed in the pane, or anonymous.
+- FTPS certificates: CA-signed (Mozilla roots) accepted; otherwise a prompt with the SHA-256
+  fingerprint (NexTerm and OpenSSL formats) → Reject / Accept once / Accept & save. A saved
+  certificate that changes blocks the connection (`HOST_KEY_CHANGED`), like SSH host keys.
+  Pinned certificates appear in Known hosts.
+- "Unencrypted" badge on plain-FTP panes, FTP/FTPS tags in the session tree and picker, and a
+  warning in the session editor.
+- SFTP side panel next to each SSH terminal (toggle at the terminal's top right): reuses the
+  tab's login, Upload… / Download… through native dialogs, Explorer drop, opens in a full
+  file-manager tab.
+- Edit remote files in Notepad (F4, double-click a remote file, or the context menu): the file is
+  downloaded to a private temp folder, Notepad is started directly (fixed path, no shell), each
+  save is uploaded back, and the copy is deleted on "Done editing". Editing rows appear in the
+  Transfers drawer.
+- CI runs the SFTP and new FTP/FTPS integration suites (pyftpdlib, `scripts/test-ftp-server.py`).
+
+### Security
+
+- FTP command injection: paths, user names and passwords containing CR/LF are refused.
+- Edited files are never opened through file associations; stale edit folders are deleted at
+  start-up.
+
 ## [0.6.0] - 2026-11-16 — Phase 5 part 1: file manager (SFTP)
 
 ### Added

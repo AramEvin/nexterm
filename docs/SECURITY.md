@@ -1,6 +1,6 @@
 # NexTerm security design
 
-Status: **Phase 5 (part 1).** Sections marked _(planned)_ are requirements for later phases.
+Status: **Phase 5.** Sections marked _(planned)_ are requirements for later phases.
 
 ## 1. Assets
 
@@ -220,6 +220,27 @@ consumes names chosen by the server. Threats and controls:
 Remote ↔ remote transfers are relayed through this PC (read from A, write to
 B); no credentials are forwarded to either server.
 
+### FTP and FTPS
+
+| Threat                                      | Control                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Plain FTP exposes the password and files    | FTP is never the default; panes, the session tree and the editor show an **Unencrypted** warning. FTPS is offered first.                                                                                                                                                                                     |
+| FTPS man-in-the-middle                      | Certificates must chain to Mozilla's root list (`webpki-roots`) **or** match a fingerprint the user accepted. Unknown → prompt (SHA-256, also in OpenSSL hex); saved and changed → blocked, no override. Data connections use the same verifier. Pins live in `known_hosts` with key type `tls-certificate`. |
+| Command injection via names (`x\r\nDELE …`) | Any path, user name or password containing CR or LF is refused before a command is built (`ftp::check_path`, `accepts_name`). Tested.                                                                                                                                                                        |
+| Hostile server names on download            | Same `safe_local_name` checks as SFTP.                                                                                                                                                                                                                                                                       |
+| Credential exposure                         | Password resolved in Rust from the vault (or typed for this connection) and held as `SecretString`; never sent to the UI or logged.                                                                                                                                                                          |
+
+### Editing remote files
+
+- The copy goes to `%TEMP%\NexTerm\edit\<random>\` (per-user temp; `0700` on unix),
+  limited to 50 MB, with a name that passed `safe_local_name`.
+- The editor is started with `std::process::Command` and a **fixed absolute path**
+  (`%SystemRoot%\System32\notepad.exe`), never through the shell or file associations,
+  so a downloaded `.exe`/`.bat`/`.lnk` is never executed. The UI can't choose the program.
+- Saves are uploaded only to the original path on the same connection. The copy is deleted
+  on "Done editing" (and folders older than a day at start-up).
+- Logs record "opened / uploaded (bytes) / stopped", never names or contents.
+
 ## 7. Logging policy (implemented in Phase 0)
 
 - Location `%APPDATA%\NexTerm\logs`, daily rotation, 14 files retained.
@@ -232,6 +253,8 @@ B); no credentials are forwarded to either server.
 - Phase 4 adds: vault created/unlocked/locked/auto-locked, failed master password,
   credential created/deleted (id, kind, key fingerprint), host-key decisions, and
   `HOST KEY CHANGED` at ERROR level.
+- Phase 5 part 2 adds: FTP session opened/closed (host, port, TLS), FTP login failed (user),
+  TLS certificate accepted/saved/changed (fingerprint), edit opened/uploaded/stopped.
 - Phase 5 adds: SFTP session opened/closed (host, port), transfer started/finished/
   cancelled/failed (file count, bytes, direction only), items deleted (count). File and
   folder names are **not** logged, and `FILE` errors are logged by code only.

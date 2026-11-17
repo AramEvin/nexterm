@@ -150,12 +150,20 @@ sftp::fs::Fs { Local | Remote(Arc<RemoteFs>) }  ── one read/write interface 
   (relay) share one transfer path.
 - **`sftp/transfer.rs`:** the queue. Plan (expand folders, check names,
   conflicts, totals), then stream 256 KiB chunks with progress every ~150 ms.
+- **`sftp/ftp.rs`:** FTP/FTPS (`suppaftp`, tokio + rustls/ring). One browse
+  connection plus a pool of up to 3 for transfers (FTP allows one transfer per
+  connection); NOOP before reusing idle ones; MLSD with LIST fallback;
+  `PinningVerifier` for certificates (CA first, then the accepted fingerprint).
+- **`sftp/edit.rs`:** remote editing (download → Notepad → poll for saves →
+  upload → cleanup).
 - **`sftp/paths.rs`:** validation, including names that come from the server.
 - **`sftp/registry.rs`:** open SFTP sessions by opaque id (max 64).
 - **Frontend:** `stores/files.ts` (tabs and panes), `stores/transfers.ts`
   (queue rows, retry), `lib/fileActions.ts` (one implementation of each action
   for menus, keys and drag & drop), `components/files/*`. File-manager tabs
-  share the tab bar with terminals (`registerExternalTab`).
+  share the tab bar with terminals (`registerExternalTab`). The SFTP side panel
+  is a hidden files tab (`side = terminal tab id`) rendered by `SidePanel`
+  inside `TerminalView`; `stores/edits.ts` tracks files open in Notepad.
 
 ## Data locations (Windows)
 

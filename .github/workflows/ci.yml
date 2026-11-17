@@ -101,7 +101,7 @@ jobs:
           retention-days: 14
 
   integration:
-    name: SSH integration tests (Linux + OpenSSH container)
+    name: SSH, SFTP and FTP integration tests (Linux, OpenSSH container, pyftpdlib)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -138,4 +138,24 @@ jobs:
           NEXTERM_TEST_SSH_PORT: "2222"
           NEXTERM_TEST_SSH_USER: ntest
           NEXTERM_TEST_SSH_PASSWORD: Test-Pass-123
-        run: cargo test --locked --test ssh_integration -- --ignored --test-threads=1
+        run: |
+          cargo test --locked --test ssh_integration -- --ignored --test-threads=1
+          cargo test --locked --test sftp_integration -- --ignored --test-threads=1
+      - name: Start FTP and FTPS test servers
+        run: |
+          pip install pyftpdlib pyopenssl
+          mkdir -p /tmp/ftp /tmp/ftps /tmp/ftpcert
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=localhost" \
+            -keyout /tmp/ftpcert/key.pem -out /tmp/ftpcert/cert.pem
+          python3 scripts/test-ftp-server.py 2121 /tmp/ftp plain &
+          python3 scripts/test-ftp-server.py 2990 /tmp/ftps tls /tmp/ftpcert/cert.pem /tmp/ftpcert/key.pem &
+          echo "NEXTERM_TEST_FTPS_FINGERPRINT=SHA256:$(openssl x509 -in /tmp/ftpcert/cert.pem -outform DER | openssl dgst -sha256 -binary | base64 | tr -d '=')" >> "$GITHUB_ENV"
+          for i in $(seq 1 30); do nc -z 127.0.0.1 2121 && nc -z 127.0.0.1 2990 && exit 0; sleep 1; done; exit 1
+      - name: Run FTP integration tests
+        working-directory: src-tauri
+        env:
+          NEXTERM_TEST_FTP_PORT: "2121"
+          NEXTERM_TEST_FTPS_PORT: "2990"
+          NEXTERM_TEST_FTP_USER: ftest
+          NEXTERM_TEST_FTP_PASSWORD: Ftp-Pass-123
+        run: cargo test --locked --test ftp_integration -- --ignored --test-threads=1

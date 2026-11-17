@@ -1,6 +1,6 @@
 [package]
 name = "nexterm"
-version = "0.6.0"
+version = "0.6.1"
 description = "NexTerm - open-source, security-focused SSH/SFTP client"
 authors = ["NexTerm contributors"]
 edition = "2024"

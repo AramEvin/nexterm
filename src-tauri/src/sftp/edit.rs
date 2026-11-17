@@ -312,6 +312,7 @@ mod tests {
     fn local_names_are_safe() {
         assert_eq!(local_name("/etc/nginx/nginx.conf"), "nginx.conf");
         assert_eq!(local_name("/x/.."), "remote-file.txt");
-        assert_eq!(local_name("/x/a\\b"), "remote-file.txt");
+        // Both separators split: only the last part is used.
+        assert_eq!(local_name("/x/a\\b"), "b");
     }
 }
