@@ -6,7 +6,38 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::RemoteFs;
+use super::{FtpFs, RemoteFs};
+
+/// An open remote file system: SFTP or FTP(S).
+#[derive(Clone)]
+pub enum RemoteHandle {
+    Sftp(Arc<RemoteFs>),
+    Ftp(Arc<FtpFs>),
+}
+
+impl RemoteHandle {
+    fn is_closed(&self) -> bool {
+        match self {
+            Self::Sftp(s) => s.is_closed(),
+            // FTP connections reconnect on demand.
+            Self::Ftp(_) => false,
+        }
+    }
+
+    async fn close(&self) {
+        match self {
+            Self::Sftp(s) => s.close().await,
+            Self::Ftp(f) => f.close().await,
+        }
+    }
+
+    fn only_user(&self) -> bool {
+        match self {
+            Self::Sftp(s) => Arc::strong_count(s) == 1,
+            Self::Ftp(f) => Arc::strong_count(f) == 1,
+        }
+    }
+}
 use crate::error::{AppError, AppResult};
 
 /// Upper bound on simultaneously open SFTP sessions.
@@ -14,7 +45,7 @@ pub const MAX_FILE_SESSIONS: usize = 64;
 
 #[derive(Default)]
 pub struct FileSessions {
-    map: Mutex<HashMap<Uuid, Arc<RemoteFs>>>,
+    map: Mutex<HashMap<Uuid, RemoteHandle>>,
 }
 
 impl FileSessions {
@@ -22,7 +53,7 @@ impl FileSessions {
         Self::default()
     }
 
-    pub async fn insert(&self, fs: RemoteFs) -> AppResult<Uuid> {
+    pub async fn insert(&self, fs: RemoteHandle) -> AppResult<Uuid> {
         let mut map = self.map.lock().await;
         if map.len() >= MAX_FILE_SESSIONS {
             fs.close().await;
@@ -31,12 +62,12 @@ impl FileSessions {
             )));
         }
         let id = Uuid::new_v4();
-        map.insert(id, Arc::new(fs));
+        map.insert(id, fs);
         Ok(id)
     }
 
     /// The session, or `NOT_FOUND`/`CONNECTION` if it is gone or dropped.
-    pub async fn get(&self, id: Uuid) -> AppResult<Arc<RemoteFs>> {
+    pub async fn get(&self, id: Uuid) -> AppResult<RemoteHandle> {
         let fs = self
             .map
             .lock()
@@ -58,7 +89,7 @@ impl FileSessions {
         let fs = self.map.lock().await.remove(&id);
         match fs {
             Some(fs) => {
-                if Arc::strong_count(&fs) == 1 {
+                if fs.only_user() {
                     fs.close().await;
                 }
                 true

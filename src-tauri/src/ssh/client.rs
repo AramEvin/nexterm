@@ -621,6 +621,7 @@ impl client::Handler for ClientHandler {
                         self.interaction.prompts.as_ref(),
                         |prompt_id| SshPrompt::HostKey {
                             prompt_id,
+                            kind: "ssh",
                             host: host.clone(),
                             port,
                             key_type: key_type.clone(),

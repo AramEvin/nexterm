@@ -26,6 +26,10 @@ tracing-appender = "0.2"
 russh = { version = "0.65", default-features = false, features = ["ring", "flate2", "rsa"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "fs", "io-util"] }
 russh-sftp = "3"
+sha2 = "0.10"
+base64 = "0.21"
+suppaftp = { version = "12", default-features = false, features = ["tokio-rustls-ring"] }
+rustls-webpki-roots = { package = "webpki-roots", version = "1" }
 secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
 uuid = { version = "1", features = ["v4", "serde"] }

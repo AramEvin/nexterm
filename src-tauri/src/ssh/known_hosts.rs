@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use russh::keys::{HashAlg, PublicKey, PublicKeyOrCertificate};
 use serde::Serialize;
 
@@ -72,7 +72,8 @@ pub fn check(
 ) -> AppResult<HostKeyStatus> {
     let (key_type, _) = describe(key);
     let mut stmt = conn.prepare(
-        "SELECT key_type, public_key, fingerprint FROM known_hosts WHERE host = ?1 AND port = ?2",
+        "SELECT key_type, public_key, fingerprint FROM known_hosts
+         WHERE host = ?1 AND port = ?2 AND key_type <> 'tls-certificate'",
     )?;
     let stored: Vec<(String, String, String)> = stmt
         .query_map(params![host, port], |r| {
@@ -130,6 +131,49 @@ pub fn save(conn: &Connection, host: &str, port: u16, key: &PublicKey) -> AppRes
             fingerprint,
             now_ms()
         ],
+    )?;
+    Ok(())
+}
+
+/// `key_type` used for pinned FTPS certificates in the same table.
+pub const CERT_TYPE: &str = "tls-certificate";
+
+/// Check a pinned TLS certificate (SHA-256 fingerprint, `SHA256:<base64>`) for
+/// `host:port`. Only consulted for certificates that are **not** signed by a
+/// trusted CA (self-signed / internal CA): CA-valid certificates never get here.
+pub fn check_cert(
+    conn: &Connection,
+    host: &str,
+    port: u16,
+    fingerprint: &str,
+) -> AppResult<HostKeyStatus> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT fingerprint FROM known_hosts WHERE host = ?1 AND port = ?2 AND key_type = ?3",
+            params![host, port, CERT_TYPE],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match stored {
+        Some(fp) if fp == fingerprint => HostKeyStatus::Trusted { source: "nexterm" },
+        Some(fp) => HostKeyStatus::Changed {
+            stored: format!("certificate {fp} (saved in NexTerm)"),
+        },
+        None => HostKeyStatus::Unknown {
+            other_known_types: Vec::new(),
+        },
+    })
+}
+
+/// Pin a TLS certificate fingerprint for `host:port`.
+pub fn save_cert(conn: &Connection, host: &str, port: u16, fingerprint: &str) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO known_hosts (host, port, key_type, public_key, fingerprint, added_at)
+         VALUES (?1, ?2, ?3, ?4, ?4, ?5)
+         ON CONFLICT (host, port, key_type) DO UPDATE SET
+             public_key = excluded.public_key, fingerprint = excluded.fingerprint,
+             added_at = excluded.added_at",
+        params![host, port, CERT_TYPE, fingerprint, now_ms()],
     )?;
     Ok(())
 }

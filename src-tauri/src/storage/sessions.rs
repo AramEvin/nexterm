@@ -59,12 +59,16 @@ fn validate_input(conn: &Connection, input: &SessionInput) -> AppResult<Valid> {
 fn protocol_to_db(p: ProtocolKind) -> &'static str {
     match p {
         ProtocolKind::Ssh => "ssh",
+        ProtocolKind::Ftp => "ftp",
+        ProtocolKind::Ftps => "ftps",
     }
 }
 
 fn protocol_from_db(raw: &str) -> rusqlite::Result<ProtocolKind> {
     match raw {
         "ssh" => Ok(ProtocolKind::Ssh),
+        "ftp" => Ok(ProtocolKind::Ftp),
+        "ftps" => Ok(ProtocolKind::Ftps),
         other => Err(rusqlite::Error::FromSqlConversionFailure(
             3,
             rusqlite::types::Type::Text,

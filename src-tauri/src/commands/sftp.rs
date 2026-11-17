@@ -17,14 +17,17 @@ use uuid::Uuid;
 use crate::commands::library::LibraryDb;
 use crate::commands::ssh::{ChannelPrompts, SshContext, VaultState, parse_connection_id, resolve};
 use crate::error::{AppError, AppResult};
+use crate::session::protocol::ProtocolKind;
 use crate::sftp::fs::{Fs, blocking};
+use crate::sftp::ftp::{self, FtpParams, FtpTrust};
 use crate::sftp::paths::{self, base_name, remote_join, remote_parent};
 use crate::sftp::transfer::{Conflict, EventSink, Job, TransferEvent};
-use crate::sftp::{FileSessions, Listing, RemoteFs, Transfers, local};
+use crate::sftp::{FileSessions, FtpFs, Listing, RemoteFs, RemoteHandle, Transfers, local};
 use crate::ssh::connections::ConnectSpec;
 use crate::ssh::prompt::SshPrompt;
 use crate::ssh::{Interaction, SshConnectParams, SshConnections, validate};
 use crate::storage::sessions;
+use crate::vault::credentials;
 
 /// Most items one delete / chmod / transfer request may name.
 const MAX_PATHS: usize = 10_000;
@@ -49,6 +52,10 @@ pub struct FsInfo {
     pub home: String,
     /// "user@host:port".
     pub label: String,
+    /// "sftp", "ftp" or "ftps".
+    pub protocol: &'static str,
+    /// False for plain FTP (password and data travel unencrypted).
+    pub encrypted: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,12 +82,24 @@ pub struct TransferRequest {
 enum Side {
     Local,
     Remote(Arc<RemoteFs>),
+    Ftp(Arc<FtpFs>),
 }
 
 async fn side(endpoint: &Endpoint, sessions: &FileSessions) -> AppResult<Side> {
     match endpoint {
         Endpoint::Local => Ok(Side::Local),
-        Endpoint::Remote { fs_id } => Ok(Side::Remote(sessions.get(parse_fs_id(fs_id)?).await?)),
+        Endpoint::Remote { fs_id } => Ok(match sessions.get(parse_fs_id(fs_id)?).await? {
+            RemoteHandle::Sftp(r) => Side::Remote(r),
+            RemoteHandle::Ftp(f) => Side::Ftp(f),
+        }),
+    }
+}
+
+/// Validate a remote path for the given side (FTP also refuses CR/LF).
+fn remote_path_for(side: &Side, raw: &str) -> AppResult<String> {
+    match side {
+        Side::Ftp(_) => ftp::check_path(raw),
+        _ => paths::remote_path(raw),
     }
 }
 
@@ -130,7 +149,7 @@ async fn open_remote(
         Err(_) => "/".to_owned(),
     };
     let label = fs.label.clone();
-    let id = files.insert(fs).await?;
+    let id = files.insert(RemoteHandle::Sftp(Arc::new(fs))).await?;
     if let (Some(sid), Ok(db)) = (saved_id, lib.db()) {
         let _ = db.run(move |c| sessions::mark_connected(c, &sid)).await;
     }
@@ -138,7 +157,91 @@ async fn open_remote(
         fs_id: id.to_string(),
         home,
         label,
+        protocol: "sftp",
+        encrypted: true,
     })
+}
+
+/// Look up an FTP/FTPS saved session and its password (vault or typed).
+/// `None` for SSH sessions.
+async fn resolve_ftp(
+    session_id: String,
+    typed_user: Option<String>,
+    typed_password: Option<SecretString>,
+    lib: &LibraryDb,
+    vault: &VaultState,
+) -> AppResult<Option<FtpParams>> {
+    let db = lib.db()?;
+    let vault = vault.0.clone();
+    db.run(move |c| {
+        let session = sessions::get(c, &session_id)?;
+        let secure = match session.protocol {
+            ProtocolKind::Ftp => false,
+            ProtocolKind::Ftps => true,
+            ProtocolKind::Ssh => return Ok(None),
+        };
+        let credential = match credentials::resolve_for_session(c, &session.id)? {
+            Some(cid) => {
+                let vault = vault.as_ref().ok_or(AppError::VaultLocked)?;
+                Some(credentials::load_secret(c, vault, &cid)?)
+            }
+            None => None,
+        };
+        let cred_user = credential
+            .as_ref()
+            .map(|(m, _)| m.username.clone())
+            .filter(|u| !u.is_empty());
+        let username = typed_user
+            .filter(|u| !u.trim().is_empty())
+            .or_else(|| Some(session.username.clone()).filter(|u| !u.is_empty()))
+            .or(cred_user)
+            .ok_or_else(|| {
+                AppError::CredentialsRequired("Enter a username for this session.".into())
+            })?;
+        let username = validate::username(&username)?;
+        if username.contains(['\r', '\n']) {
+            return Err(AppError::Validation("Invalid username.".into()));
+        }
+        let stored = credential.as_ref().and_then(|(_, s)| {
+            s.password
+                .as_ref()
+                .map(|p| SecretString::from(p.expose_secret().to_owned()))
+        });
+        if credential
+            .as_ref()
+            .is_some_and(|(_, s)| s.password.is_none())
+            && typed_password.is_none()
+        {
+            return Err(AppError::CredentialsRequired(
+                "FTP needs a password, but the linked credential is a key. Enter the password."
+                    .into(),
+            ));
+        }
+        let password = match stored.or(typed_password) {
+            Some(p) => p,
+            // RFC 1635 anonymous login.
+            None if username.eq_ignore_ascii_case("anonymous") => {
+                SecretString::from("anonymous@".to_owned())
+            }
+            None => {
+                return Err(AppError::CredentialsRequired(format!(
+                    "Enter the password for {}.",
+                    session.name
+                )));
+            }
+        };
+        if password.expose_secret().contains(['\r', '\n']) {
+            return Err(AppError::Validation("Invalid password.".into()));
+        }
+        Ok(Some(FtpParams {
+            host: session.host,
+            port: session.port,
+            username,
+            password,
+            secure,
+        }))
+    })
+    .await
 }
 
 /// Open a saved session in a file-manager pane.
@@ -155,10 +258,42 @@ pub async fn sftp_open_saved(
     if let Some(pw) = &request.password {
         validate::password_len(pw.expose_secret().len())?;
     }
+    let session_id = crate::storage::validate_id(&request.session_id)?;
+    let username = request.username.filter(|u| !u.trim().is_empty());
+    let password = request.password.filter(|p| !p.expose_secret().is_empty());
+    let typed = password
+        .as_ref()
+        .map(|p| SecretString::from(p.expose_secret().to_owned()));
+    if let Some(params) =
+        resolve_ftp(session_id.clone(), username.clone(), typed, &lib, &vault).await?
+    {
+        let secure = params.secure;
+        let trust = FtpTrust {
+            broker: Arc::clone(&ctx.broker),
+            prompts: Arc::new(ChannelPrompts(on_prompt)),
+            known_hosts: lib.db().ok(),
+        };
+        let fs = FtpFs::open(params, trust).await?;
+        let home = fs.home().await.unwrap_or_else(|_| "/".to_owned());
+        let label = fs.label.clone();
+        let id = files.insert(RemoteHandle::Ftp(fs)).await?;
+        if let Ok(db) = lib.db() {
+            let _ = db
+                .run(move |c| sessions::mark_connected(c, &session_id))
+                .await;
+        }
+        return Ok(FsInfo {
+            fs_id: id.to_string(),
+            home,
+            label,
+            protocol: if secure { "ftps" } else { "ftp" },
+            encrypted: secure,
+        });
+    }
     let spec = ConnectSpec::Saved {
-        session_id: crate::storage::validate_id(&request.session_id)?,
-        username: request.username.filter(|u| !u.trim().is_empty()),
-        password: request.password.filter(|p| !p.expose_secret().is_empty()),
+        session_id,
+        username,
+        password,
     };
     open_remote(spec, on_prompt, &lib, &vault, &ctx, &files).await
 }
@@ -194,6 +329,7 @@ pub async fn fs_home(endpoint: Endpoint, files: State<'_, FileSessions>) -> AppR
     match side(&endpoint, &files).await? {
         Side::Local => Ok(local::home()),
         Side::Remote(r) => r.home().await,
+        Side::Ftp(f) => f.home().await,
     }
 }
 
@@ -206,6 +342,7 @@ pub async fn fs_list(
     match side(&endpoint, &files).await? {
         Side::Local => blocking(move || local::list(&path)).await,
         Side::Remote(r) => r.list(&paths::remote_path(&path)?).await,
+        Side::Ftp(f) => f.list(&path).await,
     }
 }
 
@@ -224,9 +361,17 @@ pub async fn fs_mkdir(
             blocking(move || local::mkdir(&target)).await?;
             Ok(out)
         }
-        Side::Remote(r) => {
-            let target = remote_join(&paths::remote_path(&dir)?, &paths::new_name(&name, false)?);
-            r.mkdir(&target).await?;
+        side => {
+            let target = remote_join(
+                &remote_path_for(&side, &dir)?,
+                &paths::new_name(&name, false)?,
+            );
+            let target = remote_path_for(&side, &target)?;
+            match &side {
+                Side::Remote(r) => r.mkdir(&target).await?,
+                Side::Ftp(f) => f.mkdir(&target).await?,
+                Side::Local => {}
+            }
             Ok(target)
         }
     }
@@ -251,12 +396,17 @@ pub async fn fs_rename(
             blocking(move || local::rename(&from, &to)).await?;
             Ok(out)
         }
-        Side::Remote(r) => {
-            let from = paths::remote_path(&path)?;
+        side => {
+            let from = remote_path_for(&side, &path)?;
             let parent = remote_parent(&from)
                 .ok_or_else(|| AppError::Validation("The root folder can't be renamed.".into()))?;
             let to = remote_join(&parent, &paths::new_name(&new_name, false)?);
-            r.rename(&from, &to).await?;
+            let to = remote_path_for(&side, &to)?;
+            match &side {
+                Side::Remote(r) => r.rename(&from, &to).await?,
+                Side::Ftp(f) => f.rename(&from, &to).await?,
+                Side::Local => {}
+            }
             Ok(to)
         }
     }
@@ -283,14 +433,22 @@ pub async fn fs_delete(
                 }
                 blocking(move || local::remove(&p)).await?;
             }
-            Side::Remote(r) => {
-                let p = paths::remote_path(raw)?;
+            Side::Remote(_) | Side::Ftp(_) => {
+                let p = remote_path_for(&side, raw)?;
                 if remote_parent(&p).is_none() {
                     return Err(AppError::Validation(
                         "The root folder can't be deleted.".into(),
                     ));
                 }
-                r.remove(&p).await?;
+                match &side {
+                    Side::Remote(r) => {
+                        r.remove(&p).await?;
+                    }
+                    Side::Ftp(f) => {
+                        f.remove(&p).await?;
+                    }
+                    Side::Local => {}
+                }
             }
         }
         deleted += 1;
@@ -323,6 +481,7 @@ pub async fn fs_chmod(
                 blocking(move || local::chmod(&p, mode)).await?;
             }
             Side::Remote(r) => r.chmod(&paths::remote_path(raw)?, mode).await?,
+            Side::Ftp(f) => f.chmod(raw, mode).await?,
         }
     }
     Ok(())
@@ -345,6 +504,7 @@ fn validate_dir(fs: &Fs, raw: &str) -> AppResult<String> {
             Ok(p.display().to_string())
         }
         Fs::Remote(_) => paths::remote_path(raw),
+        Fs::Ftp(_) => ftp::check_path(raw),
     }
 }
 
@@ -360,6 +520,7 @@ pub async fn transfer_start(
     let to_fs = |s: Side| match s {
         Side::Local => Fs::Local,
         Side::Remote(r) => Fs::Remote(r),
+        Side::Ftp(f) => Fs::Ftp(f),
     };
     let source = to_fs(side(&request.source, &files).await?);
     let target = to_fs(side(&request.target, &files).await?);
@@ -370,7 +531,7 @@ pub async fn transfer_start(
             let p = validate_dir(&source, p)?;
             let top = match &source {
                 Fs::Local => Path::new(&p).parent().is_none(),
-                Fs::Remote(_) => remote_parent(&p).is_none(),
+                Fs::Remote(_) | Fs::Ftp(_) => remote_parent(&p).is_none(),
             };
             if top || base_name(&p).is_empty() {
                 return Err(AppError::Validation(

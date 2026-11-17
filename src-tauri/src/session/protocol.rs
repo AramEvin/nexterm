@@ -24,6 +24,17 @@ use crate::error::AppResult;
 #[serde(rename_all = "lowercase")]
 pub enum ProtocolKind {
     Ssh,
+    /// Plain FTP (unencrypted; the UI shows a warning badge). File manager only.
+    Ftp,
+    /// FTP with explicit TLS (AUTH TLS). File manager only.
+    Ftps,
+}
+
+impl ProtocolKind {
+    /// Opens in the file manager instead of a terminal.
+    pub fn is_file_only(self) -> bool {
+        matches!(self, Self::Ftp | Self::Ftps)
+    }
 }
 
 /// Terminal dimensions in character cells.

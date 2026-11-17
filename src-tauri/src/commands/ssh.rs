@@ -167,6 +167,11 @@ pub(crate) async fn resolve(
     let vault = vault.0.clone();
     db.run(move |c| {
         let session = sessions::get(c, &session_id)?;
+        if session.protocol.is_file_only() {
+            return Err(AppError::Validation(
+                "This is an FTP session: open it in the file manager.".into(),
+            ));
+        }
         let credential = match credentials::resolve_for_session(c, &session.id)? {
             Some(cid) if session.auth_method != "agent" => {
                 let vault = vault.as_ref().ok_or(AppError::VaultLocked)?;

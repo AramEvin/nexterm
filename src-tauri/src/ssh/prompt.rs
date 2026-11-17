@@ -32,6 +32,8 @@ pub enum SshPrompt {
     #[serde(rename_all = "camelCase")]
     HostKey {
         prompt_id: String,
+        /// "ssh" (host key) or "tls" (FTPS server certificate).
+        kind: &'static str,
         host: String,
         port: u16,
         key_type: String,
@@ -159,6 +161,7 @@ mod tests {
     fn host_prompt(id: String) -> SshPrompt {
         SshPrompt::HostKey {
             prompt_id: id,
+            kind: "ssh",
             host: "h".into(),
             port: 22,
             key_type: "ssh-ed25519".into(),

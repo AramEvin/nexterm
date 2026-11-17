@@ -294,6 +294,7 @@ impl Run {
         match (&self.job.source, &self.job.target) {
             (Fs::Local, Fs::Local) => true,
             (Fs::Remote(a), Fs::Remote(b)) => Arc::ptr_eq(a, b),
+            (Fs::Ftp(a), Fs::Ftp(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
     }

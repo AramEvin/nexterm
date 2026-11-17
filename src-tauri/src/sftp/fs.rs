@@ -9,6 +9,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use russh_sftp::protocol::{FileAttributes, FileType, OpenFlags};
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use super::ftp::FtpFs;
 use super::local::io_error;
 use super::paths::{remote_join, safe_local_name, safe_remote_name};
 use super::remote::{RemoteFs, sftp_error};
@@ -24,6 +25,7 @@ pub type Writer = Pin<Box<dyn AsyncWrite + Send>>;
 pub enum Fs {
     Local,
     Remote(Arc<RemoteFs>),
+    Ftp(Arc<FtpFs>),
 }
 
 /// What a transfer needs to know about a path.
@@ -45,13 +47,15 @@ impl Fs {
         match self {
             Self::Local => safe_local_name(name, cfg!(windows)),
             Self::Remote(_) => safe_remote_name(name),
+            // FTP commands are text lines: no CR/LF in names.
+            Self::Ftp(_) => safe_remote_name(name) && !name.contains(['\r', '\n']),
         }
     }
 
     pub fn join(&self, dir: &str, name: &str) -> String {
         match self {
             Self::Local => Path::new(dir).join(name).display().to_string(),
-            Self::Remote(_) => remote_join(dir, name),
+            Self::Remote(_) | Self::Ftp(_) => remote_join(dir, name),
         }
     }
 
@@ -89,6 +93,7 @@ impl Fs {
                 .map_err(|e| sftp_error(&e, path))?;
                 Ok(remote_meta(&attrs))
             }
+            Self::Ftp(f) => f.stat(path).await,
         }
     }
 
@@ -136,6 +141,7 @@ impl Fs {
                     .map(|e| (e.file_name(), remote_meta(&e.metadata())))
                     .collect())
             }
+            Self::Ftp(f) => f.read_dir(path).await,
         }
     }
 
@@ -146,6 +152,7 @@ impl Fs {
                 blocking(move || super::local::mkdir(&p)).await
             }
             Self::Remote(r) => r.mkdir(path).await,
+            Self::Ftp(f) => f.mkdir(path).await,
         }
     }
 
@@ -161,6 +168,7 @@ impl Fs {
                 let f = r.sftp.open(path).await.map_err(|e| sftp_error(&e, path))?;
                 Ok(Box::pin(f))
             }
+            Self::Ftp(f) => Ok(Box::pin(f.open_read(path).await?)),
         }
     }
 
@@ -184,6 +192,7 @@ impl Fs {
                     .map_err(|e| sftp_error(&e, path))?;
                 Ok(Box::pin(f))
             }
+            Self::Ftp(f) => Ok(Box::pin(f.open_write(path).await?)),
         }
     }
 
@@ -202,6 +211,9 @@ impl Fs {
             }
             Self::Remote(r) => {
                 let _ = r.sftp.remove_file(path).await;
+            }
+            Self::Ftp(f) => {
+                let _ = f.remove_file(path).await;
             }
         }
     }
@@ -227,6 +239,7 @@ impl Fs {
                 attrs.mtime = Some(mtime);
                 let _ = r.sftp.set_metadata(path, attrs).await;
             }
+            Self::Ftp(f) => f.set_mtime(path, mtime).await,
         }
     }
 }
