@@ -11,6 +11,7 @@
 //!   progress events.
 //! - [`paths`]: validation, including names that come from the server.
 
+pub mod edit;
 pub mod fs;
 pub mod ftp;
 pub mod local;
@@ -21,6 +22,7 @@ pub mod transfer;
 
 use serde::Serialize;
 
+pub use edit::Edits;
 pub use ftp::FtpFs;
 pub use registry::{FileSessions, RemoteHandle};
 pub use remote::RemoteFs;

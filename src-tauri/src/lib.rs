@@ -43,6 +43,11 @@ pub fn run() -> anyhow::Result<()> {
             app.manage(ssh::SshConnections::new());
             app.manage(sftp::FileSessions::new());
             app.manage(Arc::new(sftp::Transfers::new()));
+            app.manage(Arc::new(sftp::Edits::new()));
+            // Local copies of edited files left behind by an earlier run.
+            std::thread::spawn(|| {
+                sftp::edit::sweep_stale(std::time::Duration::from_secs(24 * 3600));
+            });
             let db_path = storage::db_path(&data_dir);
             let db = storage::Database::open(&db_path);
             if db.is_ok() {
@@ -132,6 +137,8 @@ pub fn run() -> anyhow::Result<()> {
             commands::sftp::fs_chmod,
             commands::sftp::transfer_start,
             commands::sftp::transfer_cancel,
+            commands::sftp::edit_start,
+            commands::sftp::edit_stop,
         ])
         .run(tauri::generate_context!())?;
 

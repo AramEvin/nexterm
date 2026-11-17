@@ -53,6 +53,8 @@ fn main() {
             "fs_chmod",
             "transfer_start",
             "transfer_cancel",
+            "edit_start",
+            "edit_stop",
         ]));
 
     if let Err(err) = tauri_build::try_build(attributes) {

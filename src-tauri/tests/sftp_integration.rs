@@ -388,3 +388,74 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     }
     out
 }
+
+#[derive(Default)]
+struct EditEvents(Mutex<Vec<nexterm_lib::sftp::edit::EditEvent>>);
+
+impl nexterm_lib::sftp::edit::EditSink for EditEvents {
+    fn send(&self, event: nexterm_lib::sftp::edit::EditEvent) {
+        self.0.lock().unwrap().push(event);
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs a real SSH server; see the module docs"]
+async fn edit_remote_file_uploads_saves_and_cleans_up() {
+    use nexterm_lib::sftp::Edits;
+    use nexterm_lib::sftp::edit::EditEvent;
+
+    let fs = open().await;
+    let dir = scratch(&fs).await;
+    let remote = remote_join(&dir, "app.conf");
+    put(&fs, remote.clone(), b"port=80\n").await;
+
+    let edits = Arc::new(Edits::new());
+    let events = Arc::new(EditEvents::default());
+    // `/bin/true` stands in for Notepad: it exits at once; the test "saves".
+    let id = edits
+        .start(
+            Fs::Remote(fs.clone()),
+            remote.clone(),
+            Some("/bin/true".into()),
+            events.clone(),
+        )
+        .await
+        .unwrap();
+    let local = match events.0.lock().unwrap().first().cloned() {
+        Some(EditEvent::Opened { local_path, .. }) => std::path::PathBuf::from(local_path),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(std::fs::read(&local).unwrap(), b"port=80\n");
+
+    std::fs::write(&local, b"port=8080\n").unwrap();
+    for _ in 0..100 {
+        if events
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EditEvent::Uploaded { .. }))
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(fs.sftp.read(remote.clone()).await.unwrap(), b"port=8080\n");
+
+    assert!(edits.stop(id));
+    for _ in 0..50 {
+        if events
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, EditEvent::Closed))
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(!local.exists(), "local copy must be deleted");
+    fs.remove(&dir).await.unwrap();
+    fs.close().await;
+}

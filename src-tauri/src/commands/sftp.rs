@@ -18,11 +18,12 @@ use crate::commands::library::LibraryDb;
 use crate::commands::ssh::{ChannelPrompts, SshContext, VaultState, parse_connection_id, resolve};
 use crate::error::{AppError, AppResult};
 use crate::session::protocol::ProtocolKind;
+use crate::sftp::edit::{EditEvent, EditSink};
 use crate::sftp::fs::{Fs, blocking};
 use crate::sftp::ftp::{self, FtpParams, FtpTrust};
 use crate::sftp::paths::{self, base_name, remote_join, remote_parent};
 use crate::sftp::transfer::{Conflict, EventSink, Job, TransferEvent};
-use crate::sftp::{FileSessions, FtpFs, Listing, RemoteFs, RemoteHandle, Transfers, local};
+use crate::sftp::{Edits, FileSessions, FtpFs, Listing, RemoteFs, RemoteHandle, Transfers, local};
 use crate::ssh::connections::ConnectSpec;
 use crate::ssh::prompt::SshPrompt;
 use crate::ssh::{Interaction, SshConnectParams, SshConnections, validate};
@@ -559,6 +560,48 @@ pub async fn transfer_cancel(id: String, transfers: State<'_, Arc<Transfers>>) -
     let id =
         Uuid::parse_str(&id).map_err(|_| AppError::Validation("Invalid transfer id.".into()))?;
     Ok(transfers.cancel(id))
+}
+
+struct ChannelEdits(Channel<EditEvent>);
+
+impl EditSink for ChannelEdits {
+    fn send(&self, event: EditEvent) {
+        if let Err(e) = self.0.send(event) {
+            tracing::debug!(error = %e, "edit event channel closed");
+        }
+    }
+}
+
+/// Open a remote file in the local editor; saves are uploaded back.
+#[tauri::command]
+pub async fn edit_start(
+    endpoint: Endpoint,
+    path: String,
+    on_event: Channel<EditEvent>,
+    files: State<'_, FileSessions>,
+    edits: State<'_, Arc<Edits>>,
+) -> AppResult<String> {
+    let side = side(&endpoint, &files).await?;
+    let path = remote_path_for(&side, &path)?;
+    let fs = match side {
+        Side::Local => {
+            return Err(AppError::Validation(
+                "Local files are edited directly.".into(),
+            ));
+        }
+        Side::Remote(r) => Fs::Remote(r),
+        Side::Ftp(f) => Fs::Ftp(f),
+    };
+    let id = edits
+        .start(fs, path, None, Arc::new(ChannelEdits(on_event)))
+        .await?;
+    Ok(id.to_string())
+}
+
+#[tauri::command]
+pub async fn edit_stop(id: String, edits: State<'_, Arc<Edits>>) -> AppResult<bool> {
+    let id = Uuid::parse_str(&id).map_err(|_| AppError::Validation("Invalid edit id.".into()))?;
+    Ok(edits.stop(id))
 }
 
 #[cfg(test)]
