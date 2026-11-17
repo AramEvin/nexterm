@@ -91,9 +91,11 @@ export default function App() {
               {tabs.map((tab) => (
                 <TerminalView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
               ))}
-              {filesTabs.map((tab) => (
-                <FilesView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
-              ))}
+              {filesTabs
+                .filter((t) => !t.side)
+                .map((tab) => (
+                  <FilesView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
+                ))}
             </div>
           </main>
         </div>

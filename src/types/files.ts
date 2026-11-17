@@ -35,7 +35,17 @@ export interface FsInfo {
   fsId: string;
   home: string;
   label: string;
+  protocol: "sftp" | "ftp" | "ftps";
+  /** False for plain FTP. */
+  encrypted: boolean;
 }
+
+/** `sftp::edit::EditEvent` */
+export type EditEvent =
+  | { type: "opened"; localPath: string; editor: string }
+  | { type: "uploaded"; bytes: number; atMs: number }
+  | { type: "failed"; message: string }
+  | { type: "closed" };
 
 export type Conflict = "overwrite" | "skip" | "rename";
 

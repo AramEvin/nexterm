@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  FilePen,
   RotateCw,
   X,
   XCircle,
@@ -14,12 +15,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatBytes, formatEta, formatSpeed } from "@/lib/files";
 import { cn } from "@/lib/utils";
+import { useEditStore, type EditItem } from "@/stores/edits";
 import { isFinished, useTransferStore, type TransferItem } from "@/stores/transfers";
 
 /** Collapsible drawer under the panes: every copy with progress, cancel, retry. */
 export function TransferQueue() {
   const items = useTransferStore((s) => s.items);
   const clearFinished = useTransferStore((s) => s.clearFinished);
+  const edits = useEditStore((s) => s.items);
   const [open, setOpen] = useState(true);
 
   const active = items.filter((t) => !isFinished(t.status));
@@ -28,7 +31,8 @@ export function TransferQueue() {
   const doneBytes = active.reduce((n, t) => n + t.bytesDone, 0);
   const speed = active.reduce((n, t) => n + t.bytesPerSec, 0);
 
-  if (items.length === 0) return null;
+  if (items.length === 0 && edits.length === 0) return null;
+  const editing = edits.filter((e) => e.status !== "closed").length;
 
   return (
     <div className="bg-sidebar flex max-h-[32%] shrink-0 flex-col border-t">
@@ -43,6 +47,7 @@ export function TransferQueue() {
         <ArrowRightLeft className="text-brand size-3.5" />
         <span className="font-medium">Transfers</span>
         <span className="text-muted-foreground">
+          {editing > 0 && `${String(editing)} editing · `}
           {active.length > 0
             ? `${String(active.length)} active · ${formatBytes(doneBytes)} of ${formatBytes(totalBytes)}${speed > 0 ? ` · ${formatSpeed(speed)}` : ""}`
             : `${String(items.length)} finished`}
@@ -72,12 +77,76 @@ export function TransferQueue() {
       </button>
       {open && (
         <ul className="min-h-0 overflow-auto border-t" aria-label="Transfers">
+          {edits.map((e) => (
+            <EditRow key={e.id} item={e} />
+          ))}
           {[...items].reverse().map((t) => (
             <TransferRow key={t.id} item={t} />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+const timeFormat = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+/** A remote file open in Notepad: saves are uploaded; Stop deletes the local copy. */
+function EditRow({ item }: { item: EditItem }) {
+  const stop = useEditStore((s) => s.stop);
+  const remove = useEditStore((s) => s.remove);
+  const closed = item.status === "closed";
+  return (
+    <li className="flex items-center gap-3 border-b px-3 py-1.5 text-xs last:border-b-0">
+      <FilePen
+        className={cn("size-4 shrink-0", closed ? "text-muted-foreground" : "text-sky-400")}
+        aria-label="Editing"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate font-medium" title={item.remotePath}>
+            {item.name}
+          </span>
+          <span className="text-muted-foreground truncate">{item.where}</span>
+        </div>
+        <div className="text-muted-foreground mt-0.5 truncate">
+          {item.status === "opening" && "Downloading and opening the editor…"}
+          {item.status === "editing" &&
+            (item.lastSavedAt
+              ? `Editing in ${item.editor} · saved to the server at ${timeFormat.format(new Date(item.lastSavedAt))}`
+              : `Editing in ${item.editor} · each save is uploaded to the server`)}
+          {closed && `Closed${item.saves > 0 ? ` · ${String(item.saves)} save(s) uploaded` : ""}`}
+          {item.error && <span className="text-destructive"> · {item.error}</span>}
+        </div>
+      </div>
+      {closed ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Remove ${item.name} from the list`}
+          title="Remove from list"
+          onClick={() => {
+            remove(item.id);
+          }}
+        >
+          <X />
+        </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={item.status === "opening"}
+          title="Stop uploading saves and delete the local copy"
+          onClick={() => void stop(item.id)}
+        >
+          Done editing
+        </Button>
+      )}
+    </li>
   );
 }
 

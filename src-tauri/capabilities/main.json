@@ -57,6 +57,8 @@
     "allow-transfer-start",
     "allow-transfer-cancel",
     "allow-edit-start",
-    "allow-edit-stop"
+    "allow-edit-stop",
+    "allow-pick-local-folder",
+    "allow-pick-local-files"
   ]
 }

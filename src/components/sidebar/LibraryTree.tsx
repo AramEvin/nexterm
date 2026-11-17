@@ -623,6 +623,23 @@ function SessionRow({
           <span className="text-muted-foreground block truncate text-xs">{subtitle}</span>
         )}
       </span>
+      {session.protocol === "ftp" && (
+        <span
+          className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] font-medium text-amber-300"
+          title="FTP: unencrypted"
+          aria-label="FTP, unencrypted"
+        >
+          FTP
+        </span>
+      )}
+      {session.protocol === "ftps" && (
+        <span
+          className="text-muted-foreground shrink-0 rounded border px-1 text-[10px]"
+          title="FTP over TLS"
+        >
+          FTPS
+        </span>
+      )}
       {session.favorite && !subtitle && (
         <Star className="size-3 shrink-0 fill-amber-400 text-amber-400" aria-label="Favourite" />
       )}

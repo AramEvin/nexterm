@@ -139,6 +139,8 @@ pub fn run() -> anyhow::Result<()> {
             commands::sftp::transfer_cancel,
             commands::sftp::edit_start,
             commands::sftp::edit_stop,
+            commands::sftp::pick_local_folder,
+            commands::sftp::pick_local_files,
         ])
         .run(tauri::generate_context!())?;
 

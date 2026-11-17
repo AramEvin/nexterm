@@ -55,6 +55,8 @@ fn main() {
             "transfer_cancel",
             "edit_start",
             "edit_stop",
+            "pick_local_folder",
+            "pick_local_files",
         ]));
 
     if let Err(err) = tauri_build::try_build(attributes) {

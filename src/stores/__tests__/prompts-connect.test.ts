@@ -23,6 +23,7 @@ const { handleConnectError } = await import("@/lib/connect");
 const hostPrompt = (id: string) => ({
   type: "hostKey" as const,
   promptId: id,
+  kind: "ssh" as const,
   host: "h",
   port: 22,
   keyType: "ssh-ed25519",

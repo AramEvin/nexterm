@@ -70,6 +70,8 @@ export type SshPrompt =
   | {
       type: "hostKey";
       promptId: string;
+      /** "ssh" host key, or "tls" certificate of an FTPS server. */
+      kind: "ssh" | "tls";
       host: string;
       port: number;
       keyType: string;

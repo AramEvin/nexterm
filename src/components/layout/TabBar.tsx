@@ -172,9 +172,11 @@ export function TabBar({ onNewSession }: TabBarProps) {
             consumeDragClick={consumeDragClick}
           />
         ))}
-        {filesTabs.map((tab, i) => (
-          <FilesTabItem key={tab.id} tab={tab} number={i + 1} active={activeTabId === tab.id} />
-        ))}
+        {filesTabs
+          .filter((t) => !t.side)
+          .map((tab, i) => (
+            <FilesTabItem key={tab.id} tab={tab} number={i + 1} active={activeTabId === tab.id} />
+          ))}
       </div>
 
       <Tooltip>

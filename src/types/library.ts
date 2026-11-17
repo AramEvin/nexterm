@@ -1,6 +1,11 @@
 /** Mirrors `src-tauri/src/storage/models.rs` (camelCase on the wire). */
 
-export type Protocol = "ssh";
+export type Protocol = "ssh" | "ftp" | "ftps";
+
+/** FTP/FTPS sessions open in the file manager, not a terminal. */
+export function isFileProtocol(p: Protocol): boolean {
+  return p === "ftp" || p === "ftps";
+}
 
 export type AuthMethod = "password" | "publickey" | "agent" | "keyboard-interactive";
 

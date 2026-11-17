@@ -5,14 +5,18 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardCopy,
+  Download,
   Eye,
   EyeOff,
+  FilePen,
   FolderOpen,
   FolderPlus,
   HardDrive,
   Home,
   KeyRound,
   Loader2,
+  Lock,
+  Maximize2,
   Pencil,
   RefreshCw,
   Search,
@@ -20,6 +24,7 @@ import {
   ShieldAlert,
   Trash2,
   Unplug,
+  Upload,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,8 +43,11 @@ import {
   copyPathToClipboard,
   copyToOtherPane,
   deleteItems,
+  downloadTo,
+  editItem,
   newFolder,
   renameItem,
+  uploadFiles,
 } from "@/lib/fileActions";
 import { FileList } from "@/components/files/FileList";
 import { LocationPicker } from "@/components/files/LocationPicker";
@@ -60,12 +68,26 @@ interface FilePaneProps {
   index: PaneIndex;
   pane: Pane;
   active: boolean;
+  /** "side" = the SFTP panel next to a terminal: Upload…/Download… instead of two panes. */
+  mode?: "tab" | "side";
+  /** Side panel: open this server in a full file-manager tab. */
+  onOpenFull?: () => void;
   /** Folder (or the pane itself: "") the user is dragging over, if this pane. */
   dropDir: string | null;
   onDragStart: (index: PaneIndex, paths: string[], e: React.PointerEvent) => void;
 }
 
-export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: FilePaneProps) {
+export function FilePane({
+  tabId,
+  index,
+  pane,
+  active,
+  mode = "tab",
+  onOpenFull,
+  dropDir,
+  onDragStart,
+}: FilePaneProps) {
+  const side = mode === "side";
   const navigate = useFilesStore((s) => s.navigate);
   const refresh = useFilesStore((s) => s.refresh);
   const setSelected = useFilesStore((s) => s.setSelected);
@@ -108,7 +130,9 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
   };
   const open = (i: number) => {
     const e = entries[i];
-    if (e && isDirLike(e)) void go(e.path);
+    if (!e) return;
+    if (isDirLike(e)) void go(e.path);
+    else if (!local && e.kind === "file") editItem(tabId, index, e.path);
   };
   const goUp = () => {
     if (pane.listing?.parent != null) void go(pane.listing.parent);
@@ -168,8 +192,16 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
           if (t.length === 1 && t[0]) renameItem(tabId, index, t[0]);
           return true;
         }
+        case "F4": {
+          const t = targets();
+          if (!local && t.length === 1 && t[0]) editItem(tabId, index, t[0]);
+          return true;
+        }
         case "F5":
-          if (targets().length) void copyToOtherPane(tabId, index, targets());
+          if (targets().length) {
+            if (side) void downloadTo(tabId, index, targets());
+            else void copyToOtherPane(tabId, index, targets());
+          }
           return true;
         case "F7":
           newFolder(tabId, index);
@@ -219,12 +251,13 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
       >
         <button
           type="button"
-          className="hover:bg-accent flex min-w-0 items-center gap-2 rounded px-2 py-1 text-sm font-medium"
+          disabled={side}
+          className="hover:bg-accent flex min-w-0 items-center gap-2 rounded px-2 py-1 text-sm font-medium disabled:hover:bg-transparent"
           onClick={() => {
             setPicking((p) => !p);
           }}
           aria-expanded={picking || pane.status === "picker"}
-          title="Change location"
+          title={side ? pane.label : "Change location"}
         >
           {pane.source?.kind === "local" ? (
             <HardDrive className="text-brand size-4 shrink-0" />
@@ -232,9 +265,19 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
             <Server className="text-brand size-4 shrink-0" />
           )}
           <span className="truncate">{pane.label}</span>
-          <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />
+          {!side && <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />}
         </button>
+        <ProtocolBadge pane={pane} />
         <div className="flex-1" />
+        {side && (
+          <IconButton
+            label="Upload files…"
+            disabled={!ready}
+            onClick={() => void uploadFiles(tabId, index)}
+          >
+            <Upload />
+          </IconButton>
+        )}
         <IconButton
           label={pane.showHidden ? "Hide hidden files" : "Show hidden files"}
           disabled={!ready}
@@ -260,7 +303,12 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
         >
           <RefreshCw className={cn(pane.loading && "animate-spin")} />
         </IconButton>
-        {!local && pane.status !== "picker" && (
+        {side && onOpenFull && (
+          <IconButton label="Open in file manager tab" onClick={onOpenFull}>
+            <Maximize2 />
+          </IconButton>
+        )}
+        {!side && !local && pane.status !== "picker" && (
           <IconButton label="Disconnect" onClick={() => void setSource(tabId, index, null)}>
             <Unplug />
           </IconButton>
@@ -280,7 +328,7 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
           <Home />
         </IconButton>
         <PathBar path={pane.path} local={local} disabled={!ready} onNavigate={(p) => void go(p)} />
-        <div className="relative w-36 shrink-0">
+        <div className={cn("relative shrink-0", side ? "w-24" : "w-36")}>
           <Search className="text-muted-foreground absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
           <Input
             value={filter}
@@ -428,7 +476,14 @@ export function FilePane({ tabId, index, pane, active, dropDir, onDragStart }: F
               )}
             </div>
           </ContextMenuTrigger>
-          <PaneMenu tabId={tabId} index={index} pane={pane} onOpen={open} cursor={cursor} />
+          <PaneMenu
+            tabId={tabId}
+            index={index}
+            pane={pane}
+            side={side}
+            onOpen={open}
+            cursor={cursor}
+          />
         </ContextMenu>
       )}
 
@@ -457,12 +512,14 @@ function PaneMenu({
   tabId,
   index,
   pane,
+  side,
   onOpen,
   cursor,
 }: {
   tabId: string;
   index: PaneIndex;
   pane: Pane;
+  side: boolean;
   onOpen: (i: number) => void;
   cursor: number | null;
 }) {
@@ -483,13 +540,33 @@ function PaneMenu({
           <FolderOpen /> Open
         </ContextMenuItem>
       )}
-      <ContextMenuItem
-        disabled={sel.length === 0}
-        onSelect={() => void copyToOtherPane(tabId, index, sel)}
-      >
-        <ArrowLeftRight /> Copy to other side
-        <ContextMenuShortcut>F5</ContextMenuShortcut>
-      </ContextMenuItem>
+      {!local && single && single.kind === "file" && (
+        <ContextMenuItem
+          onSelect={() => {
+            editItem(tabId, index, single.path);
+          }}
+        >
+          <FilePen /> Edit in Notepad
+          <ContextMenuShortcut>F4</ContextMenuShortcut>
+        </ContextMenuItem>
+      )}
+      {side ? (
+        <ContextMenuItem
+          disabled={sel.length === 0}
+          onSelect={() => void downloadTo(tabId, index, sel)}
+        >
+          <Download /> Download…
+          <ContextMenuShortcut>F5</ContextMenuShortcut>
+        </ContextMenuItem>
+      ) : (
+        <ContextMenuItem
+          disabled={sel.length === 0}
+          onSelect={() => void copyToOtherPane(tabId, index, sel)}
+        >
+          <ArrowLeftRight /> Copy to other side
+          <ContextMenuShortcut>F5</ContextMenuShortcut>
+        </ContextMenuItem>
+      )}
       <ContextMenuSeparator />
       <ContextMenuItem
         disabled={!single || noFolder}
@@ -540,6 +617,32 @@ function PaneMenu({
       </ContextMenuItem>
     </ContextMenuContent>
   );
+}
+
+/** "Unencrypted" warning for plain FTP; a small FTPS tag otherwise. */
+function ProtocolBadge({ pane }: { pane: Pane }) {
+  if (pane.status !== "ready") return null;
+  if (pane.protocol === "ftp") {
+    return (
+      <span
+        className="flex shrink-0 items-center gap-1 rounded border border-amber-500/50 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-300"
+        title="Plain FTP sends your password and files unencrypted. Use SFTP or FTPS where possible."
+      >
+        <ShieldAlert className="size-3" /> Unencrypted
+      </span>
+    );
+  }
+  if (pane.protocol === "ftps") {
+    return (
+      <span
+        className="text-muted-foreground flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[11px]"
+        title="FTP over TLS"
+      >
+        <Lock className="size-3" /> FTPS
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Breadcrumbs; click the empty space (or press Ctrl+L) to type a path. */

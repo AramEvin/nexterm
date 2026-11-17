@@ -604,6 +604,48 @@ pub async fn edit_stop(id: String, edits: State<'_, Arc<Edits>>) -> AppResult<bo
     Ok(edits.stop(id))
 }
 
+/// Native "choose a folder" dialog (the side panel's Download…).
+#[tauri::command]
+pub async fn pick_local_folder(app: tauri::AppHandle) -> AppResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = blocking(move || {
+        Ok(app
+            .dialog()
+            .file()
+            .set_title("Download to folder")
+            .blocking_pick_folder())
+    })
+    .await?;
+    picked
+        .map(|f| {
+            f.into_path()
+                .map(|p| p.display().to_string())
+                .map_err(|_| AppError::Validation("Unsupported folder location.".into()))
+        })
+        .transpose()
+}
+
+/// Native "choose files" dialog (the side panel's Upload…).
+#[tauri::command]
+pub async fn pick_local_files(app: tauri::AppHandle) -> AppResult<Vec<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = blocking(move || {
+        Ok(app
+            .dialog()
+            .file()
+            .set_title("Upload files")
+            .blocking_pick_files())
+    })
+    .await?;
+    Ok(picked
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| f.into_path().ok())
+        .map(|p| p.display().to_string())
+        .take(MAX_PATHS)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

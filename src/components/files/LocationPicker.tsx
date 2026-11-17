@@ -25,7 +25,7 @@ export function LocationPicker({
 
   const terminals = tabs.filter((t) => t.connectionId !== null);
   const matches = useMemo(() => {
-    // Every saved session is SSH today; FTP/FTPS sessions join this list later.
+    // SSH sessions open over SFTP; FTP/FTPS sessions directly.
     const ssh = sessions;
     const hit = q
       ? ssh.filter((s) =>
@@ -108,7 +108,7 @@ export function LocationPicker({
             icon={<Server className="text-muted-foreground size-4" />}
             accent={s.color}
             title={s.name}
-            detail={`${s.username ? `${s.username}@` : ""}${s.host}:${String(s.port)}`}
+            detail={`${s.protocol === "ssh" ? "SFTP" : s.protocol === "ftps" ? "FTPS" : "FTP (unencrypted)"} · ${s.username ? `${s.username}@` : ""}${s.host}:${String(s.port)}`}
             onClick={() => {
               onPick({ kind: "saved", sessionId: s.id, name: s.name, host: s.host, port: s.port });
             }}

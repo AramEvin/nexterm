@@ -2,6 +2,7 @@ import { useState, type SyntheticEvent } from "react";
 import { Check, Copy, Fingerprint, KeySquare, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { sha256Hex } from "@/lib/fingerprint";
 import {
   Dialog,
   DialogContent,
@@ -47,20 +48,40 @@ function HostKeyDialog({ prompt, respond }: { prompt: HostKeyPrompt; respond: Re
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Fingerprint className="text-brand size-5" /> Unknown server
+            <Fingerprint className="text-brand size-5" />{" "}
+            {prompt.kind === "tls" ? "Untrusted server certificate" : "Unknown server"}
           </DialogTitle>
-          <DialogDescription>
-            NexTerm has not connected to{" "}
-            <strong className="text-foreground">
-              {prompt.host}:{prompt.port}
-            </strong>{" "}
-            before. Compare the fingerprint with the one your administrator gave you (on the server:{" "}
-            <code>ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</code>).
-          </DialogDescription>
+          {prompt.kind === "tls" ? (
+            <DialogDescription>
+              The FTPS server{" "}
+              <strong className="text-foreground">
+                {prompt.host}:{prompt.port}
+              </strong>{" "}
+              uses a certificate that is not signed by a trusted authority (self-signed or an
+              internal CA). Compare its SHA-256 fingerprint with the one your administrator gave you
+              (on the server: <code>openssl x509 -in cert.pem -noout -fingerprint -sha256</code>
+              ).
+            </DialogDescription>
+          ) : (
+            <DialogDescription>
+              NexTerm has not connected to{" "}
+              <strong className="text-foreground">
+                {prompt.host}:{prompt.port}
+              </strong>{" "}
+              before. Compare the fingerprint with the one your administrator gave you (on the
+              server: <code>ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub</code>).
+            </DialogDescription>
+          )}
         </DialogHeader>
         <div className="bg-muted/50 grid gap-1 rounded-md border p-3">
           <span className="text-muted-foreground text-xs">{prompt.keyType}</span>
           <code className="text-sm break-all select-all">{prompt.fingerprint}</code>
+          {prompt.kind === "tls" && sha256Hex(prompt.fingerprint) && (
+            <>
+              <span className="text-muted-foreground mt-1 text-xs">Same, in OpenSSL's format</span>
+              <code className="text-xs break-all select-all">{sha256Hex(prompt.fingerprint)}</code>
+            </>
+          )}
         </div>
         {prompt.otherKnownTypes.length > 0 && (
           <p className="text-sm text-amber-400">

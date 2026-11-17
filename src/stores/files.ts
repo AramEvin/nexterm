@@ -30,6 +30,10 @@ export type PaneStatus = "picker" | "connecting" | "ready" | "needsLogin" | "err
 export interface Pane {
   source: PaneSource | null;
   fsId: string | null;
+  /** What the connected pane speaks. */
+  protocol: "local" | "sftp" | "ftp" | "ftps" | null;
+  /** False for plain FTP: shown with an "Unencrypted" badge. */
+  encrypted: boolean;
   /** "Local disk" or "user@host:port". */
   label: string;
   status: PaneStatus;
@@ -50,6 +54,8 @@ export interface FilesTab {
   id: string;
   panes: [Pane, Pane];
   activePane: 0 | 1;
+  /** Set for the SFTP side panel of a terminal tab (not shown in the tab bar). */
+  side: string | null;
 }
 
 export type PaneIndex = 0 | 1;
@@ -58,6 +64,8 @@ function emptyPane(source: PaneSource | null): Pane {
   return {
     source,
     fsId: null,
+    protocol: source?.kind === "local" ? "local" : null,
+    encrypted: true,
     label: source ? sourceLabel(source) : "Choose a location",
     status: source ? "connecting" : "picker",
     error: null,
@@ -89,6 +97,10 @@ interface FilesState {
   tabs: FilesTab[];
   /** New file-manager tab: local disk on the left, `right` (or a picker) on the right. */
   openTab: (right?: PaneSource) => string;
+  /** Side panel for terminal tab `terminalTabId` (created once, then reused). */
+  openSide: (terminalTabId: string, source: PaneSource) => string;
+  /** Close the side panel of a terminal tab, if any. */
+  closeSide: (terminalTabId: string) => void;
   closeTab: (id: string) => Promise<void>;
   setActivePane: (tabId: string, pane: PaneIndex) => void;
   /** Point a pane at a source (connects if remote). */
@@ -149,6 +161,7 @@ export const useFilesStore = create<FilesState>()((set, get) => {
         id,
         panes: [emptyPane({ kind: "local" }), emptyPane(right ?? null)],
         activePane: right ? 1 : 0,
+        side: null,
       };
       set((s) => ({ tabs: [...s.tabs, tab] }));
       registerExternalTab(id);
@@ -156,6 +169,29 @@ export const useFilesStore = create<FilesState>()((set, get) => {
       void get().setSource(id, 0, { kind: "local" });
       if (right) void get().setSource(id, 1, right);
       return id;
+    },
+
+    openSide: (terminalTabId, source) => {
+      const existing = get().tabs.find((t) => t.side === terminalTabId);
+      if (existing) return existing.id;
+      const id = crypto.randomUUID();
+      const tab: FilesTab = {
+        id,
+        panes: [emptyPane(source), emptyPane({ kind: "local" })],
+        activePane: 0,
+        side: terminalTabId,
+      };
+      set((s) => ({ tabs: [...s.tabs, tab] }));
+      void get().setSource(id, 0, source);
+      void get().setSource(id, 1, { kind: "local" });
+      return id;
+    },
+
+    closeSide: (terminalTabId) => {
+      const tab = get().tabs.find((t) => t.side === terminalTabId);
+      if (!tab) return;
+      tab.panes.forEach(closeRemote);
+      set((s) => ({ tabs: s.tabs.filter((t) => t.id !== tab.id) }));
     },
 
     closeTab: async (id) => {
@@ -166,7 +202,7 @@ export const useFilesStore = create<FilesState>()((set, get) => {
       unregisterExternalTab(id);
       const sessions = useSessionStore.getState();
       if (sessions.activeTabId === id) {
-        const remaining = get().tabs;
+        const remaining = get().tabs.filter((t) => !t.side);
         const next =
           remaining[remaining.length - 1]?.id ??
           sessions.tabs[sessions.tabs.length - 1]?.id ??
@@ -208,6 +244,8 @@ export const useFilesStore = create<FilesState>()((set, get) => {
           label: info.label,
           status: "ready",
           home: info.home,
+          protocol: info.protocol,
+          encrypted: info.encrypted,
         });
         if (!startPath || !(await get().navigate(tabId, idx, startPath))) {
           await get().navigate(tabId, idx, info.home);

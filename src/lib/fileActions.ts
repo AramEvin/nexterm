@@ -3,12 +3,21 @@
  * and drag & drop, so every entry point behaves the same.
  */
 import { baseName, conflictingNames } from "@/lib/files";
-import { fsChmod, fsDelete, fsMkdir, fsRename, IpcError } from "@/lib/ipc";
+import {
+  fsChmod,
+  fsDelete,
+  fsMkdir,
+  fsRename,
+  IpcError,
+  pickLocalFiles,
+  pickLocalFolder,
+} from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
 import { chooseConflict, useFileDialogStore } from "@/stores/fileDialogs";
 import { isLocal, paneEndpoint, useFilesStore, type Pane, type PaneIndex } from "@/stores/files";
+import { useEditStore } from "@/stores/edits";
 import { useTransferStore } from "@/stores/transfers";
-import type { Conflict, Endpoint } from "@/types/files";
+import type { Conflict, Endpoint, FileEntry } from "@/types/files";
 
 const isWindows = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
 
@@ -29,13 +38,58 @@ export function describeItems(paths: readonly string[]): string {
   return paths.length === 1 ? `"${baseName(paths[0] ?? "")}"` : `${String(paths.length)} items`;
 }
 
+interface CopySide {
+  endpoint: Endpoint;
+  label: string;
+  dir: string;
+}
+
 /**
- * Copy `paths` from `source` into `targetDir` of pane `targetIdx`, asking
- * what to do about name clashes when the target folder is on screen.
+ * Copy `paths` from `source` into `target.dir`. `visible` = the target
+ * folder's listing when it is on screen: then name clashes are asked about;
+ * otherwise a clash keeps both copies (never overwrites blindly).
  */
+async function startCopy(
+  source: CopySide,
+  paths: string[],
+  target: CopySide,
+  visible: { entries: FileEntry[]; caseInsensitive: boolean } | null,
+): Promise<void> {
+  const names = paths.map(baseName);
+  let conflict: Conflict = "rename";
+  if (visible) {
+    const clashes = conflictingNames(names, visible.entries, visible.caseInsensitive);
+    if (clashes.length > 0) {
+      const choice = await chooseConflict(clashes, `${target.label}: ${target.dir}`);
+      if (!choice) return;
+      conflict = choice;
+    } else {
+      conflict = "overwrite";
+    }
+  }
+  await useTransferStore.getState().start(
+    {
+      source: source.endpoint,
+      sources: paths,
+      target: target.endpoint,
+      targetDir: target.dir,
+      conflict,
+    },
+    {
+      title: paths.length === 1 ? (names[0] ?? "") : `${String(paths.length)} items`,
+      from: `${source.label}: ${source.dir}`,
+      to: `${target.label}: ${target.dir}`,
+      onFinished: () => {
+        useFilesStore.getState().refreshWhere(target.endpoint, target.dir);
+      },
+    },
+  );
+}
+
+/** Copy into pane `targetIdx` (its current folder, or `targetDir`). */
 async function queueCopy(
   tabId: string,
-  source: { endpoint: Endpoint; label: string; dir: string },
+  source: CopySide,
   paths: string[],
   targetIdx: PaneIndex,
   targetDir?: string,
@@ -51,29 +105,40 @@ async function queueCopy(
     alert("Open a folder first", "Choose a drive or folder on the other side to copy into.");
     return;
   }
-  const names = paths.map(baseName);
-  let conflict: Conflict = "rename"; // folder not on screen: never overwrite blindly
-  if (dir === target.path && target.listing) {
-    const clashes = conflictingNames(names, target.listing.entries, isLocal(target) && isWindows);
-    if (clashes.length > 0) {
-      const choice = await chooseConflict(clashes, `${target.label}: ${dir}`);
-      if (!choice) return;
-      conflict = choice;
-    } else {
-      conflict = "overwrite";
-    }
-  }
-  await useTransferStore.getState().start(
-    { source: source.endpoint, sources: paths, target: endpoint, targetDir: dir, conflict },
-    {
-      title: paths.length === 1 ? (names[0] ?? "") : `${String(paths.length)} items`,
-      from: `${source.label}: ${source.dir}`,
-      to: `${target.label}: ${dir}`,
-      onFinished: () => {
-        useFilesStore.getState().refreshWhere(endpoint, dir);
-      },
-    },
+  const visible =
+    dir === target.path && target.listing
+      ? { entries: target.listing.entries, caseInsensitive: isLocal(target) && isWindows }
+      : null;
+  await startCopy(source, paths, { endpoint, label: target.label, dir }, visible);
+}
+
+/** Side panel: download the selection into a folder chosen in a native dialog. */
+export async function downloadTo(tabId: string, idx: PaneIndex, paths: string[]): Promise<void> {
+  const src = pane(tabId, idx);
+  const endpoint = src && paneEndpoint(src);
+  if (!src || !endpoint || paths.length === 0) return;
+  const dir = await pickLocalFolder().catch(() => null);
+  if (!dir) return;
+  await startCopy(
+    { endpoint, label: src.label, dir: src.path },
+    paths,
+    { endpoint: { kind: "local" }, label: "Local disk", dir },
+    null,
   );
+}
+
+/** Side panel: upload files chosen in a native dialog into the pane's folder. */
+export async function uploadFiles(tabId: string, idx: PaneIndex): Promise<void> {
+  const paths = await pickLocalFiles().catch(() => [] as string[]);
+  if (paths.length > 0) await copyLocalPathsInto(tabId, idx, paths);
+}
+
+/** Open a remote file in the local editor (Notepad); saves go back to the server. */
+export function editItem(tabId: string, idx: PaneIndex, path: string): void {
+  const p = pane(tabId, idx);
+  const endpoint = p && paneEndpoint(p);
+  if (!p || !endpoint || endpoint.kind === "local") return;
+  void useEditStore.getState().start(endpoint, path, p.label);
 }
 
 /** F5 / "Copy to other side" / drag between panes. */

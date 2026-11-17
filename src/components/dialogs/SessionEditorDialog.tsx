@@ -18,11 +18,13 @@ import { cn } from "@/lib/utils";
 import { useDialogStore, type EditorTarget } from "@/stores/dialogs";
 import { toInput, useLibraryStore } from "@/stores/library";
 import { useVaultStore } from "@/stores/vault";
-import type { AuthMethod, Protocol, SessionInput } from "@/types/library";
+import { isFileProtocol, type AuthMethod, type Protocol, type SessionInput } from "@/types/library";
 
 /** Protocols shown in the picker; only SSH is available in this version. */
 const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
   { value: "ssh", label: "SSH", available: true },
+  { value: "ftps", label: "FTPS (FTP over TLS) — file manager", available: true },
+  { value: "ftp", label: "FTP (unencrypted) — file manager", available: true },
   { value: "telnet", label: "Telnet (Phase 8)", available: false },
   { value: "serial", label: "Serial / COM (Phase 8)", available: false },
   { value: "local", label: "Local terminal (Phase 8)", available: false },
@@ -193,7 +195,18 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
             className={selectClass}
             value={form.protocol}
             onChange={(e) => {
-              update({ protocol: e.target.value as Protocol });
+              const protocol = e.target.value as Protocol;
+              // Keep a custom port; swap the standard one.
+              const standard = ["22", "21"];
+              if (standard.includes(port)) setPort(protocol === "ssh" ? "22" : "21");
+              const ftp = isFileProtocol(protocol);
+              const keep = credentials.find((c) => c.id === form.credentialId);
+              update({
+                protocol,
+                // FTP logs in with a password only.
+                authMethod: ftp ? "password" : form.authMethod,
+                credentialId: ftp && keep?.kind === "key" ? null : form.credentialId,
+              });
             }}
           >
             {PROTOCOLS.map((p) => (
@@ -267,26 +280,33 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
       <fieldset className="grid gap-2 rounded-md border p-3">
         <legend className="px-1 text-sm font-medium">Login</legend>
         <div className="grid grid-cols-2 gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="se-auth">Method</Label>
-            <select
-              id="se-auth"
-              className={selectClass}
-              value={form.authMethod}
-              onChange={(e) => {
-                const authMethod = e.target.value as AuthMethod;
-                // A credential of the wrong kind doesn't apply to the new method.
-                const keep = credentials.find((c) => c.id === form.credentialId);
-                const fits = keep !== undefined && keep.kind === CREDENTIAL_KIND[authMethod];
-                update({ authMethod, credentialId: fits ? form.credentialId : null });
-              }}
-            >
-              <option value="password">Password</option>
-              <option value="publickey">Private key</option>
-              <option value="agent">SSH agent (OpenSSH / Pageant)</option>
-              <option value="keyboard-interactive">Keyboard-interactive (2FA)</option>
-            </select>
-          </div>
+          {isFileProtocol(form.protocol) ? (
+            <div className="grid gap-1.5">
+              <Label>Method</Label>
+              <p className="text-muted-foreground flex h-9 items-center text-sm">Password</p>
+            </div>
+          ) : (
+            <div className="grid gap-1.5">
+              <Label htmlFor="se-auth">Method</Label>
+              <select
+                id="se-auth"
+                className={selectClass}
+                value={form.authMethod}
+                onChange={(e) => {
+                  const authMethod = e.target.value as AuthMethod;
+                  // A credential of the wrong kind doesn't apply to the new method.
+                  const keep = credentials.find((c) => c.id === form.credentialId);
+                  const fits = keep !== undefined && keep.kind === CREDENTIAL_KIND[authMethod];
+                  update({ authMethod, credentialId: fits ? form.credentialId : null });
+                }}
+              >
+                <option value="password">Password</option>
+                <option value="publickey">Private key</option>
+                <option value="agent">SSH agent (OpenSSH / Pageant)</option>
+                <option value="keyboard-interactive">Keyboard-interactive (2FA)</option>
+              </select>
+            </div>
+          )}
           {form.authMethod !== "agent" && (
             <div className="grid gap-1.5">
               <Label htmlFor="se-cred">Saved credential</Label>
@@ -315,6 +335,15 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
             </div>
           )}
         </div>
+        {form.protocol === "ftp" && (
+          <p
+            role="note"
+            className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+          >
+            Plain FTP sends the password and files unencrypted. Use it only on trusted networks;
+            prefer SFTP or FTPS.
+          </p>
+        )}
         <p className="text-muted-foreground text-xs">
           {AUTH_HINT[form.authMethod]}{" "}
           <button type="button" className="text-brand hover:underline" onClick={openCredentials}>

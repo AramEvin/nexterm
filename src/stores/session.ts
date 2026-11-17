@@ -79,6 +79,9 @@ interface SessionState {
   activeTabId: string;
   /** Quick-connect dialog is waiting for a login. */
   connecting: boolean;
+  /** Terminal tabs whose SFTP side panel is open. */
+  sidePanels: string[];
+  toggleSidePanel: (tabId: string) => void;
 
   setActiveTab: (id: string) => void;
   /** New tab. Resolves on success; throws `IpcError` (user-facing message) on failure. */
@@ -172,6 +175,14 @@ export const useSessionStore = create<SessionState>()((set, get) => {
   return {
     tabs: [],
     activeTabId: HOME_TAB,
+    sidePanels: [],
+    toggleSidePanel: (tabId) => {
+      set((st) => ({
+        sidePanels: st.sidePanels.includes(tabId)
+          ? st.sidePanels.filter((id) => id !== tabId)
+          : [...st.sidePanels, tabId],
+      }));
+    },
     connecting: false,
 
     setActiveTab: (id) => {

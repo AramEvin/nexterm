@@ -6,9 +6,10 @@
 import { IpcError } from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
+import { openFilesForSaved } from "@/stores/files";
 import { useSessionStore } from "@/stores/session";
 import type { AppErrorCode } from "@/types/ipc";
-import type { SavedSession } from "@/types/library";
+import { isFileProtocol, type SavedSession } from "@/types/library";
 
 interface ErrorContext {
   host: string;
@@ -46,6 +47,11 @@ export async function openSavedSession(
   session: SavedSession,
   extra?: { username?: string; password?: string },
 ): Promise<void> {
+  // FTP/FTPS sessions have no terminal: open them in the file manager.
+  if (isFileProtocol(session.protocol)) {
+    openFilesForSaved(session);
+    return;
+  }
   try {
     await useSessionStore.getState().connectSaved(session, extra);
     void useLibraryStore.getState().load(); // refresh "last connected"

@@ -21,7 +21,14 @@ import type {
   SshConnectRequest,
   SshSessionInfo,
 } from "@/types/ipc";
-import type { Endpoint, FsInfo, Listing, TransferEvent, TransferRequest } from "@/types/files";
+import type {
+  EditEvent,
+  Endpoint,
+  FsInfo,
+  Listing,
+  TransferEvent,
+  TransferRequest,
+} from "@/types/files";
 import type { Folder, Library, MoveRequest, SavedSession, SessionInput } from "@/types/library";
 
 /** Error thrown by every IPC wrapper. `code` mirrors the Rust `AppError` code. */
@@ -362,4 +369,27 @@ export function transferStart(
 
 export function transferCancel(id: string): Promise<boolean> {
   return call<boolean>("transfer_cancel", { id });
+}
+
+/** Open a remote file in the local editor; saves are uploaded back. */
+export function editStart(
+  endpoint: Endpoint,
+  path: string,
+  onEvent: (event: EditEvent) => void,
+): Promise<string> {
+  return call<string>("edit_start", { endpoint, path, onEvent: new Channel<EditEvent>(onEvent) });
+}
+
+export function editStop(id: string): Promise<boolean> {
+  return call<boolean>("edit_stop", { id });
+}
+
+/** Native folder picker; null if cancelled. */
+export function pickLocalFolder(): Promise<string | null> {
+  return call<string | null>("pick_local_folder");
+}
+
+/** Native multi-file picker; empty if cancelled. */
+export function pickLocalFiles(): Promise<string[]> {
+  return call<string[]>("pick_local_files");
 }
