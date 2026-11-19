@@ -17,6 +17,7 @@ import type {
   AppErrorCode,
   AppErrorPayload,
   AppInfo,
+  ResourceEvent,
   SessionStatus,
   SshConnectRequest,
   SshSessionInfo,
@@ -160,6 +161,18 @@ export function sshWrite(sessionId: string, data: string): Promise<void> {
 
 export function sshResize(sessionId: string, cols: number, rows: number): Promise<void> {
   return call<undefined>("ssh_resize", { sessionId, cols, rows });
+}
+
+/** Start the live resource bar readings of a session (see `ssh::monitor`). */
+export function sshMonitorStart(
+  sessionId: string,
+  onEvent: (event: ResourceEvent) => void,
+): Promise<void> {
+  return call<undefined>("ssh_monitor_start", { sessionId, onEvent: new Channel(onEvent) });
+}
+
+export function sshMonitorStop(sessionId: string): Promise<void> {
+  return call<undefined>("ssh_monitor_stop", { sessionId });
 }
 
 export function sshDisconnect(sessionId: string): Promise<void> {

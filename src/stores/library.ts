@@ -195,6 +195,7 @@ export function toInput(s: SavedSession): SessionInput {
     color: s.color,
     notes: s.notes,
     favorite: s.favorite,
+    resourceMonitor: s.resourceMonitor,
     tags: s.tags,
   };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Columns2,
   Copy,
   FolderOpen,
   FolderSync,
@@ -7,7 +8,9 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Radio,
   RotateCw,
+  Rows2,
   TerminalSquare,
   Unplug,
   X,
@@ -23,10 +26,12 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { duplicateTab, reconnectTab } from "@/lib/connect";
+import { duplicateTab, reconnectTab, splitTab } from "@/lib/connect";
+import { MAX_PANES, leaves } from "@/lib/splits";
 import { cn } from "@/lib/utils";
 import { openFilesForTerminal, useFilesStore, type FilesTab } from "@/stores/files";
-import { HOME_TAB, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
+import { useMultiExecDialog } from "@/stores/multiExecDialog";
+import { HOME_TAB, activePane, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
 
 interface TabBarProps {
   onNewSession: () => void;
@@ -112,7 +117,9 @@ function useTabDrag(moveTab: (tabId: string, targetId: string) => void) {
 
 /** Tab strip: pinned Home tab + one tab per session (scrolls horizontally when full). */
 export function TabBar({ onNewSession }: TabBarProps) {
-  const tabs = useSessionStore((s) => s.tabs);
+  const allTabs = useSessionStore((s) => s.tabs);
+  // Split panes live inside their tab; only tabs appear in the strip.
+  const tabs = allTabs.filter((t) => t.parentId === null);
   const filesTabs = useFilesStore((s) => s.tabs);
   const openFiles = useFilesStore((s) => s.openTab);
   const activeTabId = useSessionStore((s) => s.activeTabId);
@@ -295,7 +302,21 @@ function SessionTabItem({
   const closeOtherTabs = useSessionStore((s) => s.closeOtherTabs);
   const disconnect = useSessionStore((s) => s.disconnect);
   const renameTab = useSessionStore((s) => s.renameTab);
-  const tabCount = useSessionStore((s) => s.tabs.length);
+  const tabCount = useSessionStore((s) => s.tabs.filter((t) => t.parentId === null).length);
+  const paneCount = useSessionStore((s) => {
+    const layout = s.layouts[tab.id];
+    return layout ? leaves(layout).length : 1;
+  });
+  const inMultiExec = useSessionStore((s) => {
+    const layout = s.layouts[tab.id];
+    const ids = layout ? leaves(layout) : [tab.id];
+    return ids.some((id) => s.multiExec.includes(id));
+  });
+  // Split/duplicate act on the focused pane of this tab.
+  const target =
+    useSessionStore((s) => activePane({ tabs: s.tabs, activeTabId: tab.id, focused: s.focused })) ??
+    tab;
+  const openMultiExec = useMultiExecDialog((s) => s.open);
 
   const [editing, setEditing] = useState(false);
   const title = tabTitle(tab);
@@ -341,6 +362,9 @@ function SessionTabItem({
             />
           )}
           <StateIcon state={tab.state} />
+          {inMultiExec && (
+            <Radio aria-label="In multi-exec" className="size-3.5 shrink-0 text-orange-400" />
+          )}
           {editing ? (
             <RenameInput
               initial={title}
@@ -351,6 +375,14 @@ function SessionTabItem({
             />
           ) : (
             <span className="truncate">{title}</span>
+          )}
+          {paneCount > 1 && (
+            <span
+              className="bg-muted text-muted-foreground shrink-0 rounded px-1 text-[10px] tabular-nums"
+              title={`${String(paneCount)} panes`}
+            >
+              {paneCount}
+            </span>
           )}
           <button
             type="button"
@@ -381,6 +413,25 @@ function SessionTabItem({
           onSelect={() => void duplicateTab(tab.id)}
         >
           <Copy /> Duplicate session
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={target.connectionId === null || paneCount >= MAX_PANES}
+          onSelect={() => void splitTab(target.id, "row")}
+        >
+          <Columns2 /> Split right
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={target.connectionId === null || paneCount >= MAX_PANES}
+          onSelect={() => void splitTab(target.id, "column")}
+        >
+          <Rows2 /> Split down
+        </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => {
+            openMultiExec(tab.id);
+          }}
+        >
+          <Radio /> Multi-exec…
         </ContextMenuItem>
         <ContextMenuItem
           disabled={tab.connectionId === null}

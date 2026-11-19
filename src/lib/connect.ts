@@ -7,6 +7,7 @@ import { IpcError } from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
 import { openFilesForSaved } from "@/stores/files";
+import type { SplitDirection } from "@/lib/splits";
 import { useSessionStore } from "@/stores/session";
 import type { AppErrorCode } from "@/types/ipc";
 import { isFileProtocol, type SavedSession } from "@/types/library";
@@ -96,6 +97,25 @@ export async function duplicateTab(tabId: string): Promise<void> {
     port: fresh.port,
     // Retry in the tab that already exists.
     retry: () => void reconnectTabFromDuplicate(fresh.id, tabId),
+  });
+}
+
+/** Split a pane (same server, same login) to the right (`row`) or below (`column`). */
+export async function splitTab(paneId: string, direction: SplitDirection): Promise<void> {
+  const before = new Set(useSessionStore.getState().tabs.map((t) => t.id));
+  const code = await useSessionStore.getState().splitPane(paneId, direction);
+  if (code !== "VAULT_LOCKED" && code !== "HOST_KEY_CHANGED") return;
+  const fresh = useSessionStore.getState().tabs.find((t) => !before.has(t.id));
+  if (!fresh) return;
+  handleConnectError(code, fresh.closedReason ?? "", {
+    host: fresh.host,
+    port: fresh.port,
+    retry: () => {
+      void useSessionStore
+        .getState()
+        .closePane(fresh.id)
+        .then(() => splitTab(paneId, direction));
+    },
   });
 }
 

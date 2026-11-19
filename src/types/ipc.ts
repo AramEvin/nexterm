@@ -51,6 +51,29 @@ export interface SshSessionInfo {
   connectionId: string;
 }
 
+/** `session::monitor::ResourceSample` (sizes in KiB). */
+export interface ResourceSample {
+  /** `null` on the first reading. */
+  cpuPercent: number | null;
+  cores: number;
+  memUsedKib: number;
+  memTotalKib: number;
+  swapUsedKib: number;
+  swapTotalKib: number;
+  diskUsedKib: number | null;
+  diskTotalKib: number | null;
+  /** Free for ordinary users (df "Available"). */
+  diskAvailKib: number | null;
+  load: [number, number, number];
+  uptimeSecs: number;
+}
+
+/** `session::monitor::ResourceEvent` */
+export type ResourceEvent =
+  | ({ kind: "sample" } & ResourceSample)
+  | { kind: "unsupported"; reason: string }
+  | { kind: "stopped"; reason: string };
+
 /** `session::protocol::SessionStatus` */
 export type SessionStatus = { kind: "closed"; reason: string };
 

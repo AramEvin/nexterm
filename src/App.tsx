@@ -14,7 +14,9 @@ import { StatusBar } from "@/components/layout/StatusBar";
 import { TabBar } from "@/components/layout/TabBar";
 import { WelcomePane } from "@/components/layout/WelcomePane";
 import { Sidebar } from "@/components/sidebar/Sidebar";
-import { TerminalView } from "@/components/terminal/TerminalView";
+import { TerminalArea } from "@/components/terminal/TerminalArea";
+import { MultiExecDialog } from "@/components/dialogs/MultiExecDialog";
+import { PasteDialog } from "@/components/dialogs/PasteDialog";
 import { FileDialogs } from "@/components/files/FileDialogs";
 import { FilesView } from "@/components/files/FilesView";
 import { useFilesStore } from "@/stores/files";
@@ -47,11 +49,13 @@ import { useUiStore } from "@/stores/ui";
 /** Application shell: sidebar | (tabs + content) / status bar. */
 export default function App() {
   const loadAppInfo = useUiStore((s) => s.loadAppInfo);
-  const tabs = useSessionStore((s) => s.tabs);
   const filesTabs = useFilesStore((s) => s.tabs);
   const activeTabId = useSessionStore((s) => s.activeTabId);
   const loadLibrary = useLibraryStore((s) => s.load);
   const openConnect = useDialogStore((s) => s.openConnect);
+  const isTerminalTab = useSessionStore((s) =>
+    s.tabs.some((t) => t.id === s.activeTabId && t.parentId === null),
+  );
 
   useEffect(() => {
     void loadAppInfo();
@@ -86,11 +90,17 @@ export default function App() {
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
             <TabBar onNewSession={openQuickConnect} />
-            <div className="bg-background min-h-0 flex-1">
+            <div className="bg-background relative min-h-0 flex-1">
               {activeTabId === HOME_TAB && <WelcomePane onQuickConnect={openQuickConnect} />}
-              {tabs.map((tab) => (
-                <TerminalView key={tab.id} tab={tab} visible={activeTabId === tab.id} />
-              ))}
+              <div
+                className={
+                  isTerminalTab
+                    ? "absolute inset-0"
+                    : "pointer-events-none invisible absolute inset-0"
+                }
+              >
+                <TerminalArea />
+              </div>
               {filesTabs
                 .filter((t) => !t.side)
                 .map((tab) => (
@@ -112,6 +122,8 @@ export default function App() {
       <AlertDialog />
       <ConfirmDialog />
       <FileDialogs />
+      <PasteDialog />
+      <MultiExecDialog />
     </TooltipProvider>
   );
 }

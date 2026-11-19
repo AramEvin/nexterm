@@ -122,6 +122,7 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
             color: null,
             notes: "",
             favorite: false,
+            resourceMonitor: true,
             tags: [],
           }).catch(() => undefined);
         }

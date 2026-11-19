@@ -34,6 +34,8 @@ export interface SavedSession {
   color: string | null;
   notes: string;
   favorite: boolean;
+  /** Live CPU / RAM / disk bar under the terminal (SSH). */
+  resourceMonitor: boolean;
   tags: string[];
   sortOrder: number;
   createdAt: number;
@@ -55,6 +57,8 @@ export interface SessionInput {
   color: string | null;
   notes: string;
   favorite: boolean;
+  /** Live CPU / RAM / disk bar under the terminal (SSH). */
+  resourceMonitor: boolean;
   tags: string[];
 }
 

@@ -1,5 +1,5 @@
 import { useMemo, useState, type SyntheticEvent } from "react";
-import { Check, Loader2, Save, Star } from "lucide-react";
+import { Check, Loader2, Save, Gauge, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -64,6 +64,7 @@ function blankInput(folderId: string | null): SessionInput {
     color: null,
     notes: "",
     favorite: false,
+    resourceMonitor: true,
     tags: [],
   };
 }
@@ -431,6 +432,20 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
         />
         <Star className="size-3.5" /> Favourite
       </label>
+
+      {form.protocol === "ssh" && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="accent-brand size-4"
+            checked={form.resourceMonitor}
+            onChange={(e) => {
+              update({ resourceMonitor: e.target.checked });
+            }}
+          />
+          <Gauge className="size-3.5" /> Show resource bar (CPU, RAM, disk)
+        </label>
+      )}
 
       {error && (
         <p role="alert" className="text-destructive text-sm">

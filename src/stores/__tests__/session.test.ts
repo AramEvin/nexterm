@@ -8,7 +8,15 @@ import type { SshSessionCallbacks } from "@/lib/ipc";
 
 // ---- mocks -----------------------------------------------------------------
 
-const controllers: { disposed: boolean; attached: string | null }[] = [];
+interface MockController {
+  disposed: boolean;
+  attached: string | null;
+  sendKey: ReturnType<typeof vi.fn>;
+  pasteReviewed: ReturnType<typeof vi.fn>;
+  onUserInput: ((input: unknown) => void) | null;
+  pasteGuard: ((text: string) => Promise<string | null>) | null;
+}
+const controllers: MockController[] = [];
 
 vi.mock("@/lib/terminal", () => ({
   DEFAULT_COLS: 120,
@@ -28,6 +36,10 @@ vi.mock("@/lib/terminal", () => ({
       this.attached = null;
     }
     notice = vi.fn();
+    sendKey = vi.fn();
+    pasteReviewed = vi.fn();
+    onUserInput: ((input: unknown) => void) | null = null;
+    pasteGuard: ((text: string) => Promise<string | null>) | null = null;
     dispose() {
       this.disposed = true;
     }
@@ -63,13 +75,24 @@ function okSession(_a: unknown, ...rest: unknown[]) {
   return Promise.resolve({ sessionId: `s${counter}`, connectionId: `c${counter}` });
 }
 
-const { useSessionStore, HOME_TAB, tabTitle } = await import("@/stores/session");
+const { useSessionStore, HOME_TAB, tabTitle, panesOf, activePane } =
+  await import("@/stores/session");
+const { usePasteStore } = await import("@/stores/paste");
 
 const form = { host: "srv", port: 22, username: "root", password: "pw" };
 const store = () => useSessionStore.getState();
 
 beforeEach(() => {
-  useSessionStore.setState({ tabs: [], activeTabId: HOME_TAB, connecting: false });
+  useSessionStore.setState({
+    tabs: [],
+    activeTabId: HOME_TAB,
+    connecting: false,
+    layouts: {},
+    focused: {},
+    multiExec: [],
+    sidePanels: [],
+  });
+  usePasteStore.setState({ current: null });
   controllers.length = 0;
   lastCallbacks.length = 0;
   counter = 0;
@@ -235,5 +258,113 @@ describe("duplicate, rename, reorder", () => {
     expect(store().tabs.map((t) => t.id)).toEqual([c, a, b]);
     store().moveTab(c!, b!);
     expect(store().tabs.map((t) => t.id)).toEqual([a, b, c]);
+  });
+});
+
+describe("split panes", () => {
+  it("splitting adds a pane inside the tab and focuses it", async () => {
+    await store().connect(form);
+    const root = store().tabs[0]!;
+    await store().splitPane(root.id, "row");
+    const [, pane] = store().tabs;
+    expect(pane?.parentId).toBe(root.id);
+    expect(pane?.state).toBe("connected");
+    expect(ipc.sshDuplicate).toHaveBeenCalledWith("c1", 100, 30, expect.anything());
+    expect(panesOf(store(), root.id).map((t) => t.id)).toEqual([root.id, pane?.id]);
+    expect(store().focused[root.id]).toBe(pane?.id);
+    expect(activePane(store())?.id).toBe(pane?.id);
+    expect(store().activeTabId).toBe(root.id);
+  });
+
+  it("closing a split pane keeps the tab; the last split removes the layout", async () => {
+    await store().connect(form);
+    const root = store().tabs[0]!;
+    await store().splitPane(root.id, "row");
+    const pane = store().tabs[1]!;
+    await store().closePane(pane.id);
+    expect(store().tabs.map((t) => t.id)).toEqual([root.id]);
+    expect(store().layouts[root.id]).toBeUndefined();
+    expect(ipc.sshForget).toHaveBeenCalledWith("c2");
+    expect(controllers[1]?.disposed).toBe(true);
+  });
+
+  it("closing the tab's own pane hands the tab to the next pane", async () => {
+    await store().connect(form, { title: "prod" });
+    await store().connect(form); // a second tab after it
+    const [root, other] = store().tabs;
+    store().setActiveTab(root!.id);
+    await store().splitPane(root!.id, "row");
+    await store().splitPane(root!.id, "column");
+    const heirs = store().tabs.filter((t) => t.parentId === root!.id);
+    expect(heirs).toHaveLength(2);
+    await store().closePane(root!.id);
+    const tabsNow = store().tabs.filter((t) => t.parentId === null);
+    const heir = tabsNow[0]!;
+    expect(tabsNow.map((t) => t.id)).toEqual([heir.id, other!.id]); // same position
+    expect(heir.customTitle).toBe("prod");
+    expect(store().activeTabId).toBe(heir.id);
+    expect(panesOf(store(), heir.id)).toHaveLength(2);
+    expect(store().tabs.find((t) => t.id !== heir.id && t.id !== other!.id)?.parentId).toBe(
+      heir.id,
+    );
+  });
+
+  it("closing a tab closes all its panes", async () => {
+    await store().connect(form);
+    const root = store().tabs[0]!;
+    await store().splitPane(root.id, "row");
+    await store().splitPane(root.id, "column");
+    await store().closeTab(root.id);
+    expect(store().tabs).toHaveLength(0);
+    expect(store().layouts).toEqual({});
+    expect(ipc.sshForget).toHaveBeenCalledTimes(3);
+    expect(controllers.every((c) => c.disposed)).toBe(true);
+    expect(store().activeTabId).toBe(HOME_TAB);
+  });
+
+  it("stops at the pane limit", async () => {
+    await store().connect(form);
+    const root = store().tabs[0]!;
+    for (let i = 0; i < 12; i++) await store().splitPane(root.id, "row");
+    expect(panesOf(store(), root.id).length).toBe(8);
+  });
+});
+
+describe("multi-exec", () => {
+  const ctl = (i: number) => store().tabs[i]!.controller as unknown as MockController;
+
+  it("needs two terminals and copies typed keys to the others only", async () => {
+    await store().connect(form);
+    await store().connect(form);
+    await store().connect(form);
+    const [a, b] = store().tabs;
+    store().setMultiExec([a!.id]);
+    expect(store().multiExec).toEqual([]);
+    store().setMultiExec([a!.id, b!.id, "unknown"]);
+    expect(store().multiExec).toEqual([a!.id, b!.id]);
+    ctl(0).onUserInput?.({ kind: "key", data: "l" });
+    expect(ctl(1).sendKey).toHaveBeenCalledWith("l");
+    expect(ctl(0).sendKey).not.toHaveBeenCalled();
+    expect(ctl(2).sendKey).not.toHaveBeenCalled();
+    ctl(1).onUserInput?.({ kind: "paste", text: "uptime" });
+    expect(ctl(0).pasteReviewed).toHaveBeenCalledWith("uptime");
+    // Typing in a terminal outside multi-exec goes nowhere else.
+    ctl(2).onUserInput?.({ kind: "key", data: "x" });
+    expect(ctl(0).sendKey).not.toHaveBeenCalled();
+  });
+
+  it("closing a member removes it; pastes in multi-exec always ask", async () => {
+    await store().connect(form);
+    await store().connect(form);
+    const [a, b] = store().tabs;
+    store().setMultiExec([a!.id, b!.id]);
+    const pending = ctl(0).pasteGuard?.("ls");
+    expect(usePasteStore.getState().current?.targets).toBe(2);
+    usePasteStore.getState().answer(null);
+    await expect(pending).resolves.toBeNull();
+    await store().closeTab(b!.id);
+    expect(store().multiExec).toEqual([]); // one left: multi-exec ends
+    // A single-line paste outside multi-exec needs no dialog.
+    await expect(ctl(0).pasteGuard?.("ls")).resolves.toBe("ls");
   });
 });

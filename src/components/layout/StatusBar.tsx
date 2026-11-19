@@ -2,7 +2,7 @@ import { Circle, Layers, Lock, LockOpen, ShieldOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useDialogStore } from "@/stores/dialogs";
-import { useSessionStore } from "@/stores/session";
+import { activePane, useSessionStore } from "@/stores/session";
 import { useVaultStore } from "@/stores/vault";
 import { useUiStore } from "@/stores/ui";
 
@@ -15,7 +15,7 @@ const STATE_LABEL = {
 /** Bottom status bar: active tab's connection on the left, app/vault state on the right. */
 export function StatusBar() {
   const appInfo = useUiStore((s) => s.appInfo);
-  const tab = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId));
+  const tab = useSessionStore((s) => activePane(s));
   const tabCount = useSessionStore((s) => s.tabs.length);
   const connectedCount = useSessionStore(
     (s) => s.tabs.filter((t) => t.state === "connected").length,

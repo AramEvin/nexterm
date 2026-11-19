@@ -28,9 +28,11 @@ pub struct ResourceSample {
     pub mem_total_kib: u64,
     pub swap_used_kib: u64,
     pub swap_total_kib: u64,
-    /// Root file system (`/`); `None` if `df` gave nothing usable.
+    /// Root file system (`/`) as `df` reports it; `None` if unusable.
     pub disk_used_kib: Option<u64>,
     pub disk_total_kib: Option<u64>,
+    /// Space ordinary users can still write (excludes reserved blocks).
+    pub disk_avail_kib: Option<u64>,
     /// 1, 5 and 15 minute load averages.
     pub load: [f32; 3],
     pub uptime_secs: u64,
@@ -59,6 +61,7 @@ mod tests {
             swap_total_kib: 0,
             disk_used_kib: None,
             disk_total_kib: None,
+            disk_avail_kib: None,
             load: [0.1, 0.2, 0.3],
             uptime_secs: 5,
         });

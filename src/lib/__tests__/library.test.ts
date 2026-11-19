@@ -39,6 +39,7 @@ const session = (
   color: null,
   notes: "",
   favorite: false,
+  resourceMonitor: true,
   tags: [],
   sortOrder: 0,
   createdAt: 0,

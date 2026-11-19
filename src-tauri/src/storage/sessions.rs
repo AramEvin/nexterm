@@ -389,6 +389,15 @@ mod tests {
             assert_eq!(u.port, 2222);
             assert_eq!(u.tags, ["staging"]);
             assert_eq!(list(c)?.len(), 1);
+            assert!(u.resource_monitor, "resource bar is on by default");
+
+            changed.resource_monitor = false;
+            assert!(!update(c, &s.id, &changed)?.resource_monitor);
+            assert!(
+                !duplicate(c, &s.id)?.resource_monitor,
+                "copied with the session"
+            );
+            assert!(!get(c, &s.id)?.resource_monitor);
 
             set_favorite(c, &s.id, true)?;
             mark_connected(c, &s.id)?;
@@ -396,6 +405,9 @@ mod tests {
             assert!(g.favorite);
             assert!(g.last_connected_at.is_some());
 
+            for other in list(c)?.iter().filter(|x| x.id != s.id) {
+                delete(c, &other.id)?;
+            }
             delete(c, &s.id)?;
             assert!(list(c)?.is_empty());
             let tags: i64 = c.query_row("SELECT COUNT(*) FROM session_tags", [], |r| r.get(0))?;

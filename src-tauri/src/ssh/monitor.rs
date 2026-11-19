@@ -71,7 +71,8 @@ struct Block {
     swap_free: Option<u64>,
     load: Option<[f32; 3]>,
     uptime: Option<u64>,
-    disk: Option<(u64, u64)>,
+    /// (used, total, available) KiB.
+    disk: Option<(u64, u64, u64)>,
 }
 
 /// Turns the script's output into events. Kept free of I/O for tests.
@@ -171,13 +172,14 @@ impl Parser {
             "disk" => {
                 let cols: Vec<&str> = parts.collect();
                 if cols.len() >= 5
-                    && let (Some(total), Some(used)) = (
+                    && let (Some(total), Some(used), Some(avail)) = (
                         parse_u64(cols.get(1).copied()),
                         parse_u64(cols.get(2).copied()),
+                        parse_u64(cols.get(3).copied()),
                     )
                     && total > 0
                 {
-                    b.disk = Some((used.min(total), total));
+                    b.disk = Some((used.min(total), total, avail.min(total)));
                 }
             }
             _ => {}
@@ -219,6 +221,7 @@ impl Parser {
             swap_total_kib: swap_total,
             disk_used_kib: b.disk.map(|d| d.0),
             disk_total_kib: b.disk.map(|d| d.1),
+            disk_avail_kib: b.disk.map(|d| d.2),
             load: b.load.unwrap_or([0.0; 3]),
             uptime_secs: b.uptime.unwrap_or(0),
         }))
@@ -345,6 +348,7 @@ NXT:end
         assert_eq!(s.swap_used_kib, 500_000);
         assert_eq!(s.disk_used_kib, Some(25_000));
         assert_eq!(s.disk_total_kib, Some(100_000));
+        assert_eq!(s.disk_avail_kib, Some(75_000));
         assert_eq!(s.load, [0.5, 1.25, 2.0]);
         assert_eq!(s.uptime_secs, 93_784);
     }

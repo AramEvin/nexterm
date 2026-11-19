@@ -13,6 +13,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal, type ITheme } from "@xterm/xterm";
 
 import { sshResize, sshWrite } from "@/lib/ipc";
+import { analyzePaste, stripControlChars } from "@/lib/paste";
 
 const THEME: ITheme = {
   background: "#11141a",
@@ -44,6 +45,23 @@ export const DEFAULT_ROWS = 32;
 
 export type RendererKind = "webgl" | "dom";
 
+/**
+ * WebGL only in WebView2 (Windows). WebKitGTK (Linux) doesn't present the
+ * WebGL canvas of a terminal without focus until the next input, so output in
+ * a split pane or behind the side panel looked frozen; the DOM renderer has
+ * no such problem there.
+ */
+const WEBGL_SUPPORTED = typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent);
+
+/** Input the user typed or pasted (not terminal replies), for multi-exec. */
+export type UserInput = { kind: "key"; data: string } | { kind: "paste"; text: string };
+
+/**
+ * Decides what a paste becomes: the (possibly edited) text to send, or
+ * `null` to cancel. Set by the app to show the paste safety check.
+ */
+export type PasteGuard = (text: string) => Promise<string | null>;
+
 export class TerminalController {
   readonly term: Terminal;
   private readonly fit = new FitAddon();
@@ -61,7 +79,21 @@ export class TerminalController {
     e.preventDefault();
     void this.copyOrPaste();
   };
+  /**
+   * Every paste (Ctrl+Shift+V, Shift+Insert, menu) goes through
+   * `handlePaste` instead of straight into xterm, so it can be reviewed.
+   * Capture phase on the container runs before xterm's own listener.
+   */
+  private readonly onPaste = (e: ClipboardEvent) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    void this.handlePaste(e.clipboardData?.getData("text/plain") ?? "");
+  };
   renderer: RendererKind = "dom";
+  /** Called with keys and pastes the user sends here (multi-exec fan-out). */
+  onUserInput: ((input: UserInput) => void) | null = null;
+  /** Paste safety check; without one, control characters are still stripped. */
+  pasteGuard: PasteGuard | null = null;
 
   constructor() {
     this.term = new Terminal({
@@ -80,6 +112,11 @@ export class TerminalController {
     // Registered once; they act on whichever session is attached right now.
     this.term.onData((data) => {
       this.queueInput(data);
+    });
+    // onData also carries the terminal's automatic replies (cursor reports,
+    // focus events); only real keystrokes are fanned out to other terminals.
+    this.term.onKey(({ key }) => {
+      if (this.sessionId) this.onUserInput?.({ kind: "key", data: key });
     });
     this.term.onResize(({ cols, rows }) => {
       if (this.sessionId) void sshResize(this.sessionId, cols, rows).catch(() => undefined);
@@ -120,6 +157,7 @@ export class TerminalController {
     this.element = element;
     this.term.open(element);
     element.addEventListener("contextmenu", this.onContextMenu);
+    element.addEventListener("paste", this.onPaste, { capture: true });
 
     this.resizeObserver = new ResizeObserver(() => {
       this.scheduleFit();
@@ -137,13 +175,46 @@ export class TerminalController {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.syncRenderer();
-    if (visible) {
-      this.scheduleFit();
-      this.term.focus();
-    }
+    if (visible) this.scheduleFit();
   }
 
   focus(): void {
+    this.term.focus();
+  }
+
+  /** Re-measure after the pane's size changed (split, resize bar). */
+  refit(): void {
+    if (this.visible) this.scheduleFit();
+  }
+
+  /** Whether a live session is attached (input is accepted). */
+  get attached(): boolean {
+    return this.sessionId !== null;
+  }
+
+  /** Multi-exec: a key typed in another terminal. */
+  sendKey(data: string): void {
+    this.queueInput(data);
+  }
+
+  /** Multi-exec: a paste already reviewed in another terminal. */
+  pasteReviewed(text: string): void {
+    if (this.sessionId) this.term.paste(text);
+  }
+
+  /** Paste text after the safety check (used by the menu and keyboard paste). */
+  async handlePaste(text: string): Promise<void> {
+    if (!this.sessionId || text === "") return;
+    let final: string | null;
+    if (this.pasteGuard) {
+      final = await this.pasteGuard(text);
+    } else {
+      final = analyzePaste(text).controlChars > 0 ? stripControlChars(text) : text;
+    }
+    if (final !== null && final !== "" && this.sessionId) {
+      this.term.paste(final);
+      this.onUserInput?.({ kind: "paste", text: final });
+    }
     this.term.focus();
   }
 
@@ -159,6 +230,9 @@ export class TerminalController {
     cancelAnimationFrame(this.fitFrame);
     this.resizeObserver?.disconnect();
     this.element?.removeEventListener("contextmenu", this.onContextMenu);
+    this.element?.removeEventListener("paste", this.onPaste, { capture: true });
+    this.onUserInput = null;
+    this.pasteGuard = null;
     this.disposeWebgl();
     this.term.dispose(); // also disposes the remaining addons
     this.element = null;
@@ -166,7 +240,7 @@ export class TerminalController {
 
   private syncRenderer(): void {
     if (!this.element || this.disposed) return;
-    if (this.visible && !this.webgl) {
+    if (this.visible && !this.webgl && WEBGL_SUPPORTED) {
       try {
         const webgl = new WebglAddon();
         webgl.onContextLoss(() => {
@@ -235,8 +309,9 @@ export class TerminalController {
 
   /**
    * Ctrl+Shift+C copies the selection. Ctrl+Shift+V and Shift+Insert are
-   * left to the browser's native paste, which xterm picks up (and wraps in
-   * bracketed-paste markers when the remote app asks for it).
+   * left to the browser's native paste event, which `onPaste` catches for the
+   * safety check before xterm sends it (wrapped in bracketed-paste markers
+   * when the remote app asks for it).
    */
   private handleKey(e: KeyboardEvent): boolean {
     if (e.type !== "keydown") return true;
@@ -261,7 +336,8 @@ export class TerminalController {
         this.term.clearSelection();
       } else if (this.sessionId) {
         const text = await navigator.clipboard.readText();
-        if (text) this.term.paste(text);
+        await this.handlePaste(text);
+        return;
       }
     } catch {
       // Clipboard permission denied by the webview; keyboard shortcuts still work.
