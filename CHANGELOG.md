@@ -5,12 +5,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19 — Phase 6: split panes, resource bar, multi-exec, paste check
+
 ### Added
 
-- Public GitHub repository setup: Apache-2.0 license (`LICENSE`, `NOTICE`), new README with
+- Split panes: split a tab right or down (pane buttons, tab menu, Alt+Shift+= / Alt+Shift+-)
+  into up to 8 terminals on the same server, using the tab's login. Drag or keyboard-resize
+  the dividers, move focus with Alt+Arrow, close a pane with its × or Ctrl+Shift+W. Closing
+  the tab's first pane hands the tab to the next one.
+- Live resource bar under each SSH terminal: CPU, RAM (and swap), disk use of `/` the way
+  `df` shows it, load average and uptime, with colour plus numbers at 75 % / 90 %. Read
+  agentlessly every 3 s over a separate exec channel; only Linux servers report. Per-session
+  switch "Show resource bar" (on by default) and a hide button per terminal. A split tab shows
+  one bar.
+- Multi-exec (Ctrl+Shift+M or the tab menu): choose terminals across tabs and panes, then
+  everything typed or pasted in one goes to all. Members get an orange border and label, the
+  tab an icon, and a banner offers Change / Stop.
+- Paste safety check: pastes with line breaks, over 2,000 characters, with hidden control
+  characters, or going to several terminals are shown first, with warnings for risky commands
+  and a default-on "don't run the last line". Control characters are always stripped.
+- Database migration 0003 (`sessions.resource_monitor`).
+- Public GitHub repository: Apache-2.0 license (`LICENSE`, `NOTICE`), new README with
   screenshots, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` (private vulnerability
   reporting), issue forms, pull-request template and `CODEOWNERS`.
-- Release workflow: pushing a `v*` tag builds the MSI and NSIS installers on GitHub, attaches
+- Release workflow: a `v*` tag (or Actions → Release → Run workflow) builds the MSI and NSIS installers on GitHub, attaches
   them with `SHA256SUMS.txt` and signed build provenance, and publishes the changelog section
   as release notes.
 - CodeQL (Rust, TypeScript, workflows) and OpenSSF Scorecard workflows.
@@ -18,6 +36,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ### Changed
 
+- Linux (WebKitGTK) builds use xterm's DOM renderer; WebGL stays on Windows. WebKitGTK didn't
+  repaint the WebGL canvas of an unfocused terminal until the next input.
+- Dependencies: rusqlite 0.43, sha2 0.11, base64 0.23 and the npm minor/patch group.
+  TypeScript 7 is on hold until typescript-eslint supports it.
 - All GitHub Actions are pinned to commit SHAs with least-privilege tokens; Dependabot groups
   updates by ecosystem.
 

@@ -13,8 +13,8 @@ manager with server-to-server transfer, and a live resource bar. Order is
 | 3     | 0.4     | **Session manager**: nested folders, saved connections (name, protocol, host, port, username, colour, notes, tags, favourite), drag & drop, instant search (500+), context menu, double-click to connect. SQLite with migrations. Usernames saved; passwords not yet.                                                          | Done   |
 | 4     | 0.5     | **Credential vault**: saved passwords, private keys, passphrases (Argon2id + XChaCha20-Poly1305), credentials reusable across sessions and settable as a folder default, unlock screen, auto-lock, "remember on this device". Key / agent / keyboard-interactive (2FA) auth. Host-key verification (TOFU, block changed keys). | Done   |
 | 5     | 0.6     | **WinSCP-style file manager**: SFTP side panel next to each SSH tab, plus a two-pane file-manager tab (local ↔ remote and **remote ↔ remote**). Transfer queue with progress, speed, cancel, retry; >4 GB streaming; drag & drop from Explorer; rename, delete, mkdir, chmod. FTP / FTPS added here.                           | Done   |
-| 6     | 0.7     | **Split panes + resource bar + paste**: split a tab horizontally/vertically into several terminals; live CPU / RAM / disk (and load, uptime) bar under each SSH terminal; **multi-exec** (type into many terminals at once); **paste safety check** for multi-line or large pastes.                                            | Next   |
-| 7     | 0.8     | Jump hosts (ProxyJump, chainable); import from MobaXterm and PuTTY.                                                                                                                                                                                                                                                            |        |
+| 6     | 0.7     | **Split panes + resource bar + paste**: split a tab horizontally/vertically into several terminals; live CPU / RAM / disk (and load, uptime) bar under each SSH terminal; **multi-exec** (type into many terminals at once); **paste safety check** for multi-line or large pastes.                                            | Done   |
+| 7     | 0.8     | Jump hosts (ProxyJump, chainable); import from MobaXterm and PuTTY.                                                                                                                                                                                                                                                            | Next   |
 | 8     | 0.9     | **Terminal protocols**: Telnet, Serial (COM port), local terminal (PowerShell, CMD, WSL).                                                                                                                                                                                                                                      |        |
 | 9     | 0.10    | **Graphical protocols**: VNC and RDP (design decision record first).                                                                                                                                                                                                                                                           |        |
 | 10    | 1.0     | Settings & themes, keyboard shortcuts, command palette, single instance, window state, signed auto-update, MSI + NSIS release.                                                                                                                                                                                                 |        |
@@ -36,11 +36,14 @@ need credentials or agent forwarding on server A, so it stays off by default.
 separate SSH exec channel on the same connection reads `/proc/stat`,
 `/proc/meminfo`, `/proc/loadavg` and `df` every 2–3 s. This doesn't touch your
 shell or its history. Linux first; other systems show "not supported". It can be
-turned off per session.
+turned off per session. (Implemented in 0.7.0: every 3 s, only while the
+terminal is visible; a split tab shows one bar.)
 
 **Multi-exec (Phase 6).** Typing into many servers at once is powerful and
 dangerous, so it's an explicit mode: tabs in multi-exec get a coloured border,
-and turning it on needs a confirmation.
+and turning it on needs a confirmation. (Implemented in 0.7.0: you pick the
+terminals; only real keystrokes and reviewed pastes are copied, never the
+terminal's automatic replies.)
 
 **Plaintext protocols (Phases 5, 8).** Telnet and plain FTP send passwords
 unencrypted. NexTerm shows a visible "unencrypted" badge and suggests SSH/SFTP

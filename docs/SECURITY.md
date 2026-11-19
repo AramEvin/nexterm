@@ -241,6 +241,41 @@ B); no credentials are forwarded to either server.
   on "Done editing" (and folders older than a day at start-up).
 - Logs record "opened / uploaded (bytes) / stopped", never names or contents.
 
+## 6b. Split panes, resource bar, multi-exec, paste check (implemented in Phase 6)
+
+### Resource bar
+
+- Runs on a **second channel of the terminal's existing connection** (`exec`), so no new
+  login, no extra credential use, and nothing typed into the user's shell or history.
+- The command is fixed in the binary (`ssh::monitor::command`): a read-only `/bin/sh` loop
+  over `/proc/stat`, `/proc/meminfo`, `/proc/loadavg`, `/proc/uptime` and `df -Pk /`. The UI
+  can only start or stop it; it can't change what runs.
+- The server's output is **untrusted**: lines over 4 KiB and readings over 1,100 lines are
+  dropped, unknown lines ignored, numbers parsed with overflow and NaN checks. A server can
+  make the bar show wrong numbers, nothing more.
+- Runs only while the terminal is visible; it can be turned off per saved session (migration
+  `0003`, `sessions.resource_monitor`) or hidden per terminal.
+
+### Multi-exec
+
+- Off by default, started only from an explicit picker (at least two terminals), and shown
+  with an orange border on every member, a badge on its tab and a banner with **Stop**.
+- Only input the user produced is copied: keystrokes (`term.onKey`) and pastes that passed the
+  paste check. The terminal's automatic replies (cursor-position reports, focus events) are
+  never fanned out, so one server can't inject input into another.
+- Ends on its own when fewer than two members remain.
+
+### Paste safety check
+
+- Every paste (keyboard, Shift+Insert, right-click) is caught before xterm sends it.
+- Reviewed when it has a line break, is over 2,000 characters, contains control characters,
+  or goes to several terminals in multi-exec. The dialog shows the text, line count, and
+  warnings (sudo, `rm -r/-f`, `curl … | sh`, `mkfs`/`dd`, `chmod 777`, shutdown). Cancel has
+  the initial focus.
+- Control characters (ESC, NUL, C1, DEL) are always removed, so a copied fake bracketed-paste
+  end marker (`ESC[201~`) can't break out of bracketed paste and run commands.
+- "Don't run the last line" (default on) removes the final line break.
+
 ## 7. Logging policy (implemented in Phase 0)
 
 - Location `%APPDATA%\NexTerm\logs`, daily rotation, 14 files retained.

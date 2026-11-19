@@ -47,11 +47,23 @@ and a WinSCP-style file manager, in one fast native app.
 
 - Tabbed SSH terminal (xterm.js with WebGL): 256 colours, UTF-8, full-screen apps
   (`htop`, `vim`, `mc`); each tab is isolated, so one crashing never affects the others
+- **Split panes**: split a tab right or down (Alt+Shift+= / Alt+Shift+-) into up to 8
+  terminals on the same server, drag the dividers, move between panes with Alt+Arrow
+- **Live resource bar** under each terminal: CPU, RAM, disk, load and uptime, read
+  agentlessly over a separate SSH channel (nothing installed, nothing in your shell history)
+- **Multi-exec**: pick terminals (Ctrl+Shift+M) and type into all of them at once; they get
+  an orange border and a banner while it's on
+- **Paste safety check**: multi-line, large or suspicious pastes are shown first, with
+  warnings for `sudo`, `rm -rf`, `curl | sh` and hidden control characters
 - Session library: nested folders, tags, colours, notes, favourites, drag & drop, and
   instant search (`tag:prod`)
 - Reconnect and duplicate tabs without retyping the password
 - Login with a password, private key (OpenSSH, PEM, PuTTY `.ppk`), Windows OpenSSH agent /
   Pageant, or keyboard-interactive (2FA / OTP)
+
+| Split panes and resource bar                                                                 | Multi-exec                                                         |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| ![Three panes on one server with the resource bar](docs/images/split-panes-resource-bar.png) | ![Typing into three terminals at once](docs/images/multi-exec.png) |
 
 ### File manager
 
@@ -83,6 +95,8 @@ and a WinSCP-style file manager, in one fast native app.
 | Stolen session database or logs | Secrets only exist encrypted in the vault; automated tests grep the DB files and logs for secrets           |
 | Malicious server file names     | Names like `..\..\x`, `C:\evil` or `CON` can't escape the download folder; symlinks are never followed      |
 | FTP command injection           | Paths, user names and passwords containing CR/LF are refused                                                |
+| Malicious clipboard content     | Multi-line or suspicious pastes are reviewed first; hidden control characters are stripped                  |
+| Typing into the wrong servers   | Multi-exec needs an explicit choice of terminals; members are outlined in orange with a banner to stop      |
 | Compromised web UI              | Strict CSP, deny-by-default IPC permissions, no shell plugin; every command is validated in Rust            |
 | Supply chain                    | `cargo audit` and `npm audit` in CI, Dependabot, CodeQL, OpenSSF Scorecard, release build provenance        |
 
@@ -90,6 +104,8 @@ and a WinSCP-style file manager, in one fast native app.
 <summary>Screenshot: certificate prompt for a self-signed FTPS server</summary>
 
 ![FTPS certificate fingerprint prompt](docs/images/ftps-certificate.png)
+
+![Paste safety check catching a hidden control character](docs/images/paste-check.png)
 
 </details>
 
@@ -149,8 +165,8 @@ decision records: [docs/adr/](docs/adr/)
 | ------- | -------------------------------------------------------------------- | ------- |
 | 0.1–0.5 | Terminal, tabs, session library, vault, key/agent/2FA login          | ✅ Done |
 | 0.6     | File manager: SFTP, FTP/FTPS, server-to-server, side panel, editing  | ✅ Done |
-| 0.7     | Split panes, live CPU/RAM/disk bar, multi-exec, paste safety check   | 🔜 Next |
-| 0.8     | Jump hosts (ProxyJump), import from MobaXterm and PuTTY              |         |
+| 0.7     | Split panes, live CPU/RAM/disk bar, multi-exec, paste safety check   | ✅ Done |
+| 0.8     | Jump hosts (ProxyJump), import from MobaXterm and PuTTY              | 🔜 Next |
 | 0.9     | Telnet, serial (COM), local PowerShell / CMD / WSL                   |         |
 | 0.10    | VNC and RDP                                                          |         |
 | 1.0     | Settings and themes, command palette, signed installers, auto-update |         |
