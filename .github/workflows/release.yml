@@ -1,11 +1,21 @@
 name: Release
 
-# Push a version tag (e.g. `git tag v0.7.0 && git push origin v0.7.0`) to build the
-# Windows installers on GitHub and publish them as a release with checksums and
-# signed build provenance (https://docs.github.com/actions/security-guides/using-artifact-attestations).
+# Builds the Windows installers on GitHub and publishes them as a release with
+# checksums and signed build provenance
+# (https://docs.github.com/actions/security-guides/using-artifact-attestations).
+# Start it either way:
+#   - push a version tag: `git tag v0.7.0 && git push origin v0.7.0`, or
+#   - Actions → Release → Run workflow → enter the version (the tag is created on
+#     the selected branch's latest commit).
 on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the v (must match package.json), e.g. 0.6.1"
+        required: true
+        type: string
 
 permissions: {}
 
@@ -15,6 +25,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Tag being released: the pushed tag, or v<input> for a manual run.
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
 
 jobs:
   build:
@@ -33,7 +45,10 @@ jobs:
 
       - name: Check that the tag matches the app version
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${RELEASE_TAG#v}"
+          if ! [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Invalid version '$tag'"; exit 1
+          fi
           for v in "$(node -p "require('./package.json').version")" \
                    "$(node -p "require('./src-tauri/tauri.conf.json').version")" \
                    "$(grep -m1 '^version' src-tauri/Cargo.toml | cut -d'"' -f2)"; do
@@ -95,7 +110,7 @@ jobs:
 
       - name: Release notes from CHANGELOG.md
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           awk -v v="$version" '
             $0 ~ "^## \\[" v "\\]" { found = 1; next }
             found && /^## \[/ { exit }
@@ -116,11 +131,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           prerelease=""
           case "$version" in 0.*|*-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" dist-release/* \
+          # A manual run creates the tag on the commit that was built.
+          gh release create "$RELEASE_TAG" dist-release/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "NexTerm $version" \
             --notes-file notes.md \
-            --verify-tag $prerelease
+            --target "$GITHUB_SHA" $prerelease

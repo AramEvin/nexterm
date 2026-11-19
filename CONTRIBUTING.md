@@ -89,6 +89,7 @@ The passwords above belong to throw-away test servers only.
 1. Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`,
    then `npm install --package-lock-only` and `cargo update -p nexterm`.
 2. Move the Unreleased changelog entries under the new version.
-3. Tag and push: `git tag v0.7.0 && git push origin v0.7.0`. The release workflow builds
+3. Tag and push (`git tag v0.7.0 && git push origin v0.7.0`), or run **Actions → Release →
+   Run workflow** with the version (it creates the tag). The release workflow builds
    the Windows installers on GitHub, attaches them with `SHA256SUMS.txt` and build
    provenance, and publishes the release notes from the changelog.
