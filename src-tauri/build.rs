@@ -20,6 +20,8 @@ fn main() {
             "ssh_connect",
             "ssh_write",
             "ssh_resize",
+            "ssh_monitor_start",
+            "ssh_monitor_stop",
             "ssh_disconnect",
             "ssh_reconnect",
             "ssh_duplicate",

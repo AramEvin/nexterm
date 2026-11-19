@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use super::monitor::MonitorSink;
 use crate::error::AppResult;
 
 /// Kinds of session NexTerm can open. Serialized as lowercase strings
@@ -51,8 +52,16 @@ pub enum SessionCommand {
     Write(Vec<u8>),
     /// The terminal was resized.
     Resize(TerminalSize),
+    /// Start (`Some`) or stop (`None`) the live resource readings.
+    Monitor(Option<Arc<dyn MonitorSink>>),
     /// The user closed the session.
     Close,
+}
+
+impl std::fmt::Debug for dyn MonitorSink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MonitorSink")
+    }
 }
 
 /// Lifecycle notifications sent to the UI.

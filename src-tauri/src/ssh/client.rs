@@ -472,6 +472,8 @@ async fn run_session(
     sink: &dyn OutputSink,
 ) -> String {
     let mut exit_status: Option<u32> = None;
+    // Dropped (and stopped) when this function returns.
+    let mut _monitor: Option<super::monitor::Monitor> = None;
 
     loop {
         tokio::select! {
@@ -487,6 +489,12 @@ async fn run_session(
                         .await
                     {
                         tracing::debug!(error = %e, "window_change failed");
+                    }
+                }
+                Some(SessionCommand::Monitor(sink)) => {
+                    _monitor = None; // stop the previous one first
+                    if let Some(sink) = sink {
+                        _monitor = super::monitor::start(handle, sink).await;
                     }
                 }
                 Some(SessionCommand::Close) | None => {

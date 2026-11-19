@@ -5,6 +5,7 @@
 //! changes, and prompts (host-key decisions, 2FA codes) that the UI answers
 //! with `ssh_prompt_respond`.
 
+use crate::session::monitor::{MonitorSink, ResourceEvent};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -514,6 +515,41 @@ pub async fn ssh_resize(
     let id = parse_session_id(&session_id)?;
     let size = validate::terminal_size(cols, rows)?;
     manager.send(id, SessionCommand::Resize(size)).await
+}
+
+struct ChannelMonitor(Channel<ResourceEvent>);
+
+impl MonitorSink for ChannelMonitor {
+    fn event(&self, event: ResourceEvent) -> bool {
+        self.0.send(event).is_ok()
+    }
+}
+
+/// Start the live resource bar of a session (replaces a running one). The
+/// readings run on a separate exec channel of the same connection
+/// (see `ssh::monitor`).
+#[tauri::command]
+pub async fn ssh_monitor_start(
+    session_id: String,
+    on_event: Channel<ResourceEvent>,
+    manager: State<'_, Arc<SessionManager>>,
+) -> AppResult<()> {
+    let id = parse_session_id(&session_id)?;
+    let sink: Arc<dyn MonitorSink> = Arc::new(ChannelMonitor(on_event));
+    manager.send(id, SessionCommand::Monitor(Some(sink))).await
+}
+
+/// Stop the resource bar readings of a session.
+#[tauri::command]
+pub async fn ssh_monitor_stop(
+    session_id: String,
+    manager: State<'_, Arc<SessionManager>>,
+) -> AppResult<()> {
+    let id = parse_session_id(&session_id)?;
+    match manager.send(id, SessionCommand::Monitor(None)).await {
+        Ok(()) | Err(AppError::NotFound(_)) => Ok(()), // session already gone
+        Err(e) => Err(e),
+    }
 }
 
 /// Close a session.

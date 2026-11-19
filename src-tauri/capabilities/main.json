@@ -23,6 +23,8 @@
     "allow-ssh-connect",
     "allow-ssh-write",
     "allow-ssh-resize",
+    "allow-ssh-monitor-start",
+    "allow-ssh-monitor-stop",
     "allow-ssh-disconnect",
     "allow-ssh-reconnect",
     "allow-ssh-duplicate",

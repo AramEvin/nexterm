@@ -27,6 +27,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nexterm_lib::error::AppError;
+use nexterm_lib::session::monitor::{MonitorSink, ResourceEvent};
 use nexterm_lib::session::protocol::{
     OutputSink, SessionCommand, SessionStatus, TerminalProtocol, TerminalSize,
 };
@@ -693,4 +694,88 @@ async fn logs_contain_no_secrets() {
     assert!(logs.contains("auth_method=\"password\"") || logs.contains("auth_method=password"));
     assert!(logs.contains("publickey"));
     assert!(logs.contains("host-key decision") || logs.contains("host key verified"));
+}
+
+#[derive(Default)]
+struct CollectMonitor(Mutex<Vec<ResourceEvent>>);
+
+impl MonitorSink for CollectMonitor {
+    fn event(&self, event: ResourceEvent) -> bool {
+        self.0.lock().unwrap().push(event);
+        true
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs a real SSH server (see module docs)"]
+async fn resource_monitor_reports_linux_readings_without_touching_the_shell() {
+    let sink = Arc::new(CollectSink::default());
+    let handle = SshProtocol::open(
+        params(&env("NEXTERM_TEST_SSH_PASSWORD")),
+        TERM,
+        sink.clone(),
+    )
+    .await
+    .expect("connect");
+    let monitor = Arc::new(CollectMonitor::default());
+    handle
+        .commands
+        .send(SessionCommand::Monitor(Some(monitor.clone())))
+        .await
+        .unwrap();
+
+    // Two readings (3 s apart) give a CPU percentage.
+    let mut samples = Vec::new();
+    for _ in 0..200 {
+        samples = monitor
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                ResourceEvent::Sample(s) => Some(s.clone()),
+                _ => None,
+            })
+            .collect();
+        if samples.len() >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        samples.len() >= 2,
+        "events: {:?}",
+        monitor.0.lock().unwrap()
+    );
+    let s = &samples[1];
+    assert!(s.mem_total_kib > 0 && s.mem_used_kib <= s.mem_total_kib);
+    assert!(s.cores >= 1);
+    assert!(s.cpu_percent.is_some_and(|c| (0.0..=100.0).contains(&c)));
+    assert!(s.disk_total_kib.is_some_and(|t| t > 0));
+
+    // The shell is still interactive and saw none of the monitor's output.
+    handle
+        .commands
+        .send(SessionCommand::Write(b"echo NX-$((40+2))\n".to_vec()))
+        .await
+        .unwrap();
+    let text = sink.wait_for("NX-42").await;
+    assert!(
+        !text.contains("NXT:"),
+        "monitor output leaked into the terminal"
+    );
+
+    // Stop: no new readings after a while.
+    handle
+        .commands
+        .send(SessionCommand::Monitor(None))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let count = monitor.0.lock().unwrap().len();
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    assert_eq!(monitor.0.lock().unwrap().len(), count);
+
+    handle.commands.send(SessionCommand::Close).await.unwrap();
+    let _ = handle.task.await;
 }

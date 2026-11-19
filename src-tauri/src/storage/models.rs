@@ -33,6 +33,8 @@ pub struct SavedSession {
     pub color: Option<String>,
     pub notes: String,
     pub favorite: bool,
+    /// Show the live CPU / RAM / disk bar under this session's terminals.
+    pub resource_monitor: bool,
     pub tags: Vec<String>,
     pub sort_order: i64,
     pub created_at: i64,
@@ -63,8 +65,15 @@ pub struct SessionInput {
     pub notes: String,
     #[serde(default)]
     pub favorite: bool,
+    /// Live resource bar (default on).
+    #[serde(default = "default_true")]
+    pub resource_monitor: bool,
     #[serde(default)]
     pub tags: Vec<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_auth_method() -> String {

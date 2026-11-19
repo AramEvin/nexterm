@@ -4,6 +4,7 @@
 pub mod client;
 pub mod connections;
 pub mod known_hosts;
+pub mod monitor;
 pub mod prompt;
 pub mod validate;
 

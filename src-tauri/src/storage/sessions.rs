@@ -13,7 +13,7 @@ use crate::session::protocol::ProtocolKind;
 
 const SELECT_COLUMNS: &str = "id, folder_id, name, protocol, host, port, username, auth_method,
      credential_id, jump_host_id, color, notes, favorite, sort_order, created_at, updated_at,
-     last_connected_at";
+     last_connected_at, resource_monitor";
 
 /// Validated `SessionInput`.
 struct Valid {
@@ -28,6 +28,7 @@ struct Valid {
     color: Option<String>,
     notes: String,
     favorite: bool,
+    resource_monitor: bool,
     tags: Vec<String>,
 }
 
@@ -52,6 +53,7 @@ fn validate_input(conn: &Connection, input: &SessionInput) -> AppResult<Valid> {
         color: validate::color(input.color.as_deref())?,
         notes: validate::notes(&input.notes)?,
         favorite: input.favorite,
+        resource_monitor: input.resource_monitor,
         tags: validate::tags(&input.tags)?,
     })
 }
@@ -81,6 +83,7 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedSession> {
     let protocol: String = row.get("protocol")?;
     let port: i64 = row.get("port")?;
     let favorite: i64 = row.get("favorite")?;
+    let resource_monitor: i64 = row.get("resource_monitor")?;
     Ok(SavedSession {
         id: row.get("id")?,
         folder_id: row.get("folder_id")?,
@@ -95,6 +98,7 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedSession> {
         color: row.get("color")?,
         notes: row.get("notes")?,
         favorite: favorite != 0,
+        resource_monitor: resource_monitor != 0,
         tags: Vec::new(),
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
@@ -178,8 +182,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
     tx.execute(
         "INSERT INTO sessions (id, folder_id, name, protocol, host, port, username, auth_method,
                                credential_id, color, notes, favorite, sort_order, created_at,
-                               updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                               updated_at, resource_monitor)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15)",
         params![
             id,
             v.folder_id,
@@ -194,7 +198,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
             v.notes,
             v.favorite,
             order,
-            now
+            now,
+            v.resource_monitor
         ],
     )?;
     write_tags(&tx, &id, &v.tags)?;
@@ -214,7 +219,7 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
     tx.execute(
         "UPDATE sessions SET folder_id = ?2, name = ?3, protocol = ?4, host = ?5, port = ?6,
                 username = ?7, auth_method = ?8, credential_id = ?9, color = ?10, notes = ?11,
-                favorite = ?12, sort_order = ?13, updated_at = ?14
+                favorite = ?12, sort_order = ?13, updated_at = ?14, resource_monitor = ?15
          WHERE id = ?1",
         params![
             existing.id,
@@ -230,7 +235,8 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
             v.notes,
             v.favorite,
             order,
-            now_ms()
+            now_ms(),
+            v.resource_monitor
         ],
     )?;
     write_tags(&tx, &existing.id, &v.tags)?;
@@ -265,6 +271,7 @@ pub fn duplicate(conn: &mut Connection, id: &str) -> AppResult<SavedSession> {
         color: src.color.clone(),
         notes: src.notes.clone(),
         favorite: false,
+        resource_monitor: src.resource_monitor,
         tags: src.tags.clone(),
     };
     let copy = create(conn, &input)?;
@@ -351,6 +358,7 @@ mod tests {
             color: Some("#14B8A6".into()),
             notes: "primary db".into(),
             favorite: false,
+            resource_monitor: true,
             tags: vec!["prod".into(), "db".into()],
         }
     }

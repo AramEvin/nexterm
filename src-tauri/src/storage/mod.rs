@@ -28,6 +28,7 @@ use crate::error::{AppError, AppResult};
 const MIGRATIONS: &[&str] = &[
     include_str!("../../migrations/0001_initial.sql"),
     include_str!("../../migrations/0002_vault.sql"),
+    include_str!("../../migrations/0003_resource_bar.sql"),
 ];
 
 impl From<rusqlite::Error> for AppError {

@@ -572,6 +572,7 @@ mod tests {
                 color: None,
                 notes: String::new(),
                 favorite: false,
+                resource_monitor: true,
                 tags: vec![],
             };
             let sess = sessions::create(c, &input)?;
