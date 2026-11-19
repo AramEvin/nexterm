@@ -2,14 +2,33 @@ version: 2
 updates:
   - package-ecosystem: cargo
     directory: /src-tauri
-    schedule: { interval: weekly }
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 10
+    labels: [dependencies, rust]
+    commit-message: { prefix: "chore(deps)" }
     groups:
       tauri: { patterns: ["tauri*"] }
+      crypto:
+        patterns: [argon2, chacha20poly1305, "russh*", rustls*, ring, sha2]
+      minor-and-patch:
+        update-types: [minor, patch]
+
   - package-ecosystem: npm
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 10
+    labels: [dependencies, frontend]
+    commit-message: { prefix: "chore(deps)" }
     groups:
       tauri: { patterns: ["@tauri-apps/*"] }
+      minor-and-patch:
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
-    schedule: { interval: weekly }
+    schedule: { interval: weekly, day: monday }
+    labels: [dependencies, ci]
+    commit-message: { prefix: "ci(deps)" }
+    groups:
+      actions:
+        patterns: ["*"]

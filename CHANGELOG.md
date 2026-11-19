@@ -5,6 +5,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+### Added
+
+- Public GitHub repository setup: Apache-2.0 license (`LICENSE`, `NOTICE`), new README with
+  screenshots, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` (private vulnerability
+  reporting), issue forms, pull-request template and `CODEOWNERS`.
+- Release workflow: pushing a `v*` tag builds the MSI and NSIS installers on GitHub, attaches
+  them with `SHA256SUMS.txt` and signed build provenance, and publishes the changelog section
+  as release notes.
+- CodeQL (Rust, TypeScript, workflows) and OpenSSF Scorecard workflows.
+- The installer shows the license.
+
+### Changed
+
+- All GitHub Actions are pinned to commit SHAs with least-privilege tokens; Dependabot groups
+  updates by ecosystem.
+
 ## [0.6.1] - 2026-11-17 — Phase 5 part 2: FTP/FTPS, SFTP side panel, edit remote files
 
 ### Added

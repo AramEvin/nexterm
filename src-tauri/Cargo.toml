@@ -1,8 +1,11 @@
 [package]
 name = "nexterm"
 version = "0.6.1"
-description = "NexTerm - open-source, security-focused SSH/SFTP client"
+description = "NexTerm - security-first, open-source SSH, SFTP and FTP client"
 authors = ["NexTerm contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/AramEvin/nexterm"
+homepage = "https://github.com/AramEvin/nexterm"
 edition = "2024"
 
 [lib]

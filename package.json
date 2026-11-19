@@ -2,6 +2,13 @@
   "name": "nexterm",
   "private": true,
   "version": "0.6.1",
+  "description": "Security-first, open-source SSH, SFTP and FTP client for Windows",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AramEvin/nexterm.git"
+  },
+  "homepage": "https://github.com/AramEvin/nexterm",
   "type": "module",
   "scripts": {
     "dev": "vite",

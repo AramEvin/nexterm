@@ -1,0 +1,8 @@
+NexTerm
+Copyright 2026 NexTerm contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It includes third-party open-source software (Rust crates and npm packages)
+under their own licenses (MIT, Apache-2.0, BSD, ISC, MPL-2.0 and others).
+The full dependency list is in src-tauri/Cargo.lock and package-lock.json.

@@ -44,8 +44,8 @@
     "publisher": "NexTerm contributors",
     "copyright": "Copyright (c) 2026 NexTerm contributors",
     "category": "DeveloperTool",
-    "shortDescription": "Open-source SSH/SFTP client",
-    "longDescription": "NexTerm is a free, open-source, security-focused SSH and SFTP client.",
+    "shortDescription": "Open-source SSH, SFTP and FTP client",
+    "longDescription": "NexTerm is a free, open-source, security-first SSH, SFTP and FTP client for Windows.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -53,6 +53,9 @@
       "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "license": "Apache-2.0",
+    "licenseFile": "../LICENSE",
+    "homepage": "https://github.com/AramEvin/nexterm"
   }
 }

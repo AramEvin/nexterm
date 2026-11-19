@@ -1,0 +1,9 @@
+# Default reviewer for everything.
+*                     @AramEvin
+
+# Security-sensitive areas: changes need the maintainer's review.
+/src-tauri/src/vault/       @AramEvin
+/src-tauri/src/ssh/         @AramEvin
+/src-tauri/capabilities/    @AramEvin
+/src-tauri/tauri.conf.json  @AramEvin
+/.github/                   @AramEvin

@@ -1,0 +1,80 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security problems:** don't file them here; use
+        [Report a vulnerability](https://github.com/AramEvin/nexterm/security/advisories/new).
+  - type: input
+    id: version
+    attributes:
+      label: NexTerm version
+      description: The installer name or the version in the status bar (e.g. 0.6.1)
+      placeholder: "0.6.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (development build)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Terminal / tabs
+        - Session library
+        - Vault / credentials / login
+        - Host keys / certificates
+        - File manager (SFTP)
+        - File manager (FTP / FTPS)
+        - SFTP side panel / editing
+        - Installer
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See error …
+    validations:
+      required: true
+  - type: textarea
+    id: server
+    attributes:
+      label: Server details (if relevant)
+      description: Server software and version, e.g. OpenSSH 9.6, vsftpd 3.0.5, FileZilla Server
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: From `%APPDATA%\NexTerm\logs` (NexTerm never logs passwords or file names). Remove host names if they're sensitive.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this isn't a duplicate
+          required: true
+        - label: I removed passwords, keys and other secrets from this report
+          required: true
