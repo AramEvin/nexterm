@@ -26,7 +26,7 @@ use crate::sftp::transfer::{Conflict, EventSink, Job, TransferEvent};
 use crate::sftp::{Edits, FileSessions, FtpFs, Listing, RemoteFs, RemoteHandle, Transfers, local};
 use crate::ssh::connections::ConnectSpec;
 use crate::ssh::prompt::SshPrompt;
-use crate::ssh::{Interaction, SshConnectParams, SshConnections, validate};
+use crate::ssh::{Interaction, SshConnections, validate};
 use crate::storage::sessions;
 use crate::vault::credentials;
 
@@ -131,19 +131,13 @@ async fn open_remote(
 ) -> AppResult<FsInfo> {
     let resolved = resolve(spec, lib, vault).await?;
     let saved_id = resolved.saved_session_id.clone();
-    let params = SshConnectParams {
-        host: resolved.host,
-        port: resolved.port,
-        username: resolved.username,
-        auth: resolved.auth,
-        interaction: Interaction {
-            broker: Arc::clone(&ctx.broker),
-            prompts: Arc::new(ChannelPrompts(on_prompt)),
-            known_hosts: lib.db().ok(),
-            openssh_known_hosts: ctx.openssh_known_hosts.clone(),
-            agent_socket: None,
-        },
-    };
+    let params = resolved.into_params(Interaction {
+        broker: Arc::clone(&ctx.broker),
+        prompts: Arc::new(ChannelPrompts(on_prompt)),
+        known_hosts: lib.db().ok(),
+        openssh_known_hosts: ctx.openssh_known_hosts.clone(),
+        agent_socket: None,
+    });
     let fs = RemoteFs::open(params).await?;
     let home = match fs.home().await {
         Ok(h) => h,

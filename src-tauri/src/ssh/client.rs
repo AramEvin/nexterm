@@ -102,6 +102,9 @@ pub struct SshConnectParams {
     pub username: String,
     pub auth: SshAuth,
     pub interaction: Interaction,
+    /// Reach this host through another SSH server first (ProxyJump). The
+    /// jump host's own `jump` makes a chain.
+    pub jump: Option<Box<SshConnectParams>>,
 }
 
 impl std::fmt::Debug for SshConnectParams {
@@ -111,6 +114,7 @@ impl std::fmt::Debug for SshConnectParams {
             .field("port", &self.port)
             .field("username", &self.username)
             .field("auth", &self.auth.method_name())
+            .field("jump", &self.jump)
             .finish_non_exhaustive()
     }
 }
@@ -126,7 +130,12 @@ impl TerminalProtocol for SshProtocol {
         size: TerminalSize,
         sink: Arc<dyn OutputSink>,
     ) -> AppResult<SessionHandle> {
-        let SshClient { handle, host, port } = connect(params).await?;
+        let SshClient {
+            handle,
+            host,
+            port,
+            via,
+        } = connect(params).await?;
 
         let channel = open_shell(&handle, size)
             .await
@@ -136,6 +145,7 @@ impl TerminalProtocol for SshProtocol {
         let task = tokio::spawn(async move {
             let reason = run_session(&handle, channel, rx, sink.as_ref()).await;
             let _ = handle.disconnect(Disconnect::ByApplication, "", "en").await;
+            drop(via); // jump hosts last: the tunnel runs through them
             tracing::info!(%host, port, %reason, "SSH session closed");
             sink.status(SessionStatus::Closed { reason });
         });
@@ -153,6 +163,9 @@ pub struct SshClient {
     pub handle: Handle<ClientHandler>,
     pub host: String,
     pub port: u16,
+    /// The jump host connection this one is tunnelled through. Must live as
+    /// long as `handle` (dropping it closes the tunnel).
+    pub via: Option<Box<SshClient>>,
 }
 
 /// TCP connect -> key exchange -> host-key verification -> authentication.
@@ -164,8 +177,16 @@ pub async fn connect(params: SshConnectParams) -> AppResult<SshClient> {
         username,
         auth,
         interaction,
+        jump,
     } = params;
-    tracing::info!(%host, port, %username, auth_method = auth.method_name(), "SSH connecting");
+    // Jump host first (recursively for a chain), then a direct-tcpip channel
+    // through it carries this connection. Host keys and logins are checked
+    // per hop, exactly as for a direct connection.
+    let via = match jump {
+        Some(jump) => Some(Box::new(Box::pin(connect(*jump)).await?)),
+        None => None,
+    };
+    tracing::info!(%host, port, %username, auth_method = auth.method_name(), via_jump = via.is_some(), "SSH connecting");
 
     let config = Arc::new(client::Config {
         keepalive_interval: Some(KEEPALIVE_INTERVAL),
@@ -183,10 +204,22 @@ pub async fn connect(params: SshConnectParams) -> AppResult<SshClient> {
 
     // The connect timeout covers TCP + key exchange, not the time the user
     // spends reading a host-key prompt (that has its own timeout).
-    let connected = tokio::time::timeout(
-        CONNECT_TIMEOUT + PROMPT_TIMEOUT,
-        client::connect(config, (host.as_str(), port), handler),
-    )
+    let connected = tokio::time::timeout(CONNECT_TIMEOUT + PROMPT_TIMEOUT, async {
+        match &via {
+            None => client::connect(config, (host.as_str(), port), handler).await,
+            Some(jump) => {
+                let channel = jump
+                    .handle
+                    .channel_open_direct_tcpip(host.as_str(), u32::from(port), "127.0.0.1", 0)
+                    .await
+                    .map_err(|e| {
+                        tracing::warn!(error = %e, jump = %jump.host, "jump host refused the tunnel");
+                        e
+                    })?;
+                client::connect_stream(config, channel.into_stream(), handler).await
+            }
+        }
+    })
     .await;
     let take_outcome = || {
         outcome
@@ -218,7 +251,12 @@ pub async fn connect(params: SshConnectParams) -> AppResult<SshClient> {
             return Err(e);
         }
     }
-    Ok(SshClient { handle, host, port })
+    Ok(SshClient {
+        handle,
+        host,
+        port,
+        via,
+    })
 }
 
 fn auth_error(e: &russh::Error) -> AppError {

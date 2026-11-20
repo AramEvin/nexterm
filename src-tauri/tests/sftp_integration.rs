@@ -56,6 +56,7 @@ async fn open() -> Arc<RemoteFs> {
             openssh_known_hosts: None,
             agent_socket: None,
         },
+        jump: None,
     };
     Arc::new(RemoteFs::open(params).await.unwrap())
 }

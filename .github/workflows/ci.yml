@@ -116,6 +116,8 @@ jobs:
           USER_NAME: ntest
           USER_PASSWORD: Test-Pass-123 # throw-away test container only
           PASSWORD_ACCESS: "true"
+          # Allows TCP forwarding, needed by the jump-host (ProxyJump) tests.
+          DOCKER_MODS: linuxserver/mods:openssh-server-ssh-tunnel
           # Public half of the test-only key in src-tauri/tests/fixtures.
           PUBLIC_KEY: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICx6sXLiohIuTTar0Cgnsgda8/YG1XYt547ikog84PJG nexterm-test-only"
     steps:

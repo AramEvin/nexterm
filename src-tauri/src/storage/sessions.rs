@@ -30,9 +30,48 @@ struct Valid {
     favorite: bool,
     resource_monitor: bool,
     tags: Vec<String>,
+    jump_host_id: Option<String>,
 }
 
-fn validate_input(conn: &Connection, input: &SessionInput) -> AppResult<Valid> {
+/// Longest jump chain (bastion → bastion → … → target).
+pub const MAX_JUMP_HOPS: usize = 5;
+
+/// The jump host must be an SSH session, and following its own jump hosts
+/// must neither come back to `self_id` nor exceed [`MAX_JUMP_HOPS`].
+fn check_jump_chain(conn: &Connection, first: &str, self_id: Option<&str>) -> AppResult<()> {
+    let mut next = Some(first.to_owned());
+    let mut seen = Vec::new();
+    while let Some(id) = next {
+        if Some(id.as_str()) == self_id || seen.contains(&id) {
+            return Err(AppError::Validation(
+                "That jump host leads back to this session (a loop).".into(),
+            ));
+        }
+        if seen.len() >= MAX_JUMP_HOPS {
+            return Err(AppError::Validation(format!(
+                "Too many jump hosts in a row (max {MAX_JUMP_HOPS})."
+            )));
+        }
+        let hop = get(conn, &id).map_err(|e| match e {
+            AppError::NotFound(_) => AppError::Validation("The jump host no longer exists.".into()),
+            other => other,
+        })?;
+        if hop.protocol != ProtocolKind::Ssh {
+            return Err(AppError::Validation(
+                "A jump host must be an SSH session.".into(),
+            ));
+        }
+        seen.push(id);
+        next = hop.jump_host_id;
+    }
+    Ok(())
+}
+
+fn validate_input(
+    conn: &Connection,
+    input: &SessionInput,
+    self_id: Option<&str>,
+) -> AppResult<Valid> {
     let folder_id = validate::optional_id(input.folder_id.as_deref())?;
     if let Some(f) = folder_id.as_deref() {
         folders::get(conn, f)?;
@@ -41,8 +80,18 @@ fn validate_input(conn: &Connection, input: &SessionInput) -> AppResult<Valid> {
     if let Some(cid) = credential_id.as_deref() {
         folders::ensure_credential(conn, cid)?;
     }
+    let jump_host_id = validate::optional_id(input.jump_host_id.as_deref())?;
+    if let Some(j) = jump_host_id.as_deref() {
+        if input.protocol != ProtocolKind::Ssh {
+            return Err(AppError::Validation(
+                "Only SSH sessions can use a jump host.".into(),
+            ));
+        }
+        check_jump_chain(conn, j, self_id)?;
+    }
     Ok(Valid {
         folder_id,
+        jump_host_id,
         name: validate::session_name(&input.name)?,
         protocol: input.protocol,
         host: validate::host(&input.host)?,
@@ -174,7 +223,7 @@ pub fn get(conn: &Connection, id: &str) -> AppResult<SavedSession> {
 }
 
 pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSession> {
-    let v = validate_input(conn, input)?;
+    let v = validate_input(conn, input, None)?;
     let id = Uuid::new_v4().to_string();
     let now = now_ms();
     let tx = conn.transaction()?;
@@ -182,8 +231,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
     tx.execute(
         "INSERT INTO sessions (id, folder_id, name, protocol, host, port, username, auth_method,
                                credential_id, color, notes, favorite, sort_order, created_at,
-                               updated_at, resource_monitor)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15)",
+                               updated_at, resource_monitor, jump_host_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16)",
         params![
             id,
             v.folder_id,
@@ -199,7 +248,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
             v.favorite,
             order,
             now,
-            v.resource_monitor
+            v.resource_monitor,
+            v.jump_host_id
         ],
     )?;
     write_tags(&tx, &id, &v.tags)?;
@@ -209,7 +259,7 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
 
 pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResult<SavedSession> {
     let existing = get(conn, id)?;
-    let v = validate_input(conn, input)?;
+    let v = validate_input(conn, input, Some(&existing.id))?;
     let tx = conn.transaction()?;
     let order = if existing.folder_id == v.folder_id {
         existing.sort_order
@@ -219,7 +269,8 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
     tx.execute(
         "UPDATE sessions SET folder_id = ?2, name = ?3, protocol = ?4, host = ?5, port = ?6,
                 username = ?7, auth_method = ?8, credential_id = ?9, color = ?10, notes = ?11,
-                favorite = ?12, sort_order = ?13, updated_at = ?14, resource_monitor = ?15
+                favorite = ?12, sort_order = ?13, updated_at = ?14, resource_monitor = ?15,
+                jump_host_id = ?16
          WHERE id = ?1",
         params![
             existing.id,
@@ -236,7 +287,8 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
             v.favorite,
             order,
             now_ms(),
-            v.resource_monitor
+            v.resource_monitor,
+            v.jump_host_id
         ],
     )?;
     write_tags(&tx, &existing.id, &v.tags)?;
@@ -272,6 +324,7 @@ pub fn duplicate(conn: &mut Connection, id: &str) -> AppResult<SavedSession> {
         notes: src.notes.clone(),
         favorite: false,
         resource_monitor: src.resource_monitor,
+        jump_host_id: src.jump_host_id.clone(),
         tags: src.tags.clone(),
     };
     let copy = create(conn, &input)?;
@@ -359,6 +412,7 @@ mod tests {
             notes: "primary db".into(),
             favorite: false,
             resource_monitor: true,
+            jump_host_id: None,
             tags: vec!["prod".into(), "db".into()],
         }
     }
@@ -435,6 +489,64 @@ mod tests {
                 create(c, &input("x", Some(&missing))).unwrap_err().code(),
                 "NOT_FOUND"
             );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn jump_hosts_are_checked_for_loops_depth_and_protocol() {
+        let db = Database::open_in_memory().unwrap();
+        db.with(|c| {
+            let bastion = create(c, &input("bastion", None))?;
+            let mut via = input("app", None);
+            via.jump_host_id = Some(bastion.id.clone());
+            let app = create(c, &via)?;
+            assert_eq!(app.jump_host_id.as_deref(), Some(bastion.id.as_str()));
+            assert_eq!(
+                duplicate(c, &app.id)?.jump_host_id.as_deref(),
+                Some(bastion.id.as_str())
+            );
+
+            // bastion → app → bastion would loop; a session can't jump via itself.
+            let mut back = input("bastion", None);
+            back.jump_host_id = Some(app.id.clone());
+            assert!(matches!(
+                update(c, &bastion.id, &back),
+                Err(AppError::Validation(_))
+            ));
+            let mut selfjump = input("app", None);
+            selfjump.jump_host_id = Some(app.id.clone());
+            assert!(matches!(
+                update(c, &app.id, &selfjump),
+                Err(AppError::Validation(_))
+            ));
+
+            // Only SSH sessions use or serve as jump hosts.
+            let mut ftp = input("ftp", None);
+            ftp.protocol = ProtocolKind::Ftps;
+            ftp.jump_host_id = Some(bastion.id.clone());
+            assert!(matches!(create(c, &ftp), Err(AppError::Validation(_))));
+            ftp.jump_host_id = None;
+            let ftp = create(c, &ftp)?;
+            let mut via_ftp = input("x", None);
+            via_ftp.jump_host_id = Some(ftp.id.clone());
+            assert!(matches!(create(c, &via_ftp), Err(AppError::Validation(_))));
+
+            // MAX_JUMP_HOPS jump hosts are fine; one more is refused.
+            let mut prev = create(c, &input("h0", None))?.id;
+            for i in 1..=MAX_JUMP_HOPS {
+                let mut hop = input(&format!("h{i}"), None);
+                hop.jump_host_id = Some(prev);
+                prev = create(c, &hop)?.id;
+            }
+            let mut too_deep = input("deep", None);
+            too_deep.jump_host_id = Some(prev);
+            assert!(matches!(create(c, &too_deep), Err(AppError::Validation(_))));
+
+            // Deleting the jump host leaves the session without one.
+            delete(c, &bastion.id)?;
+            assert_eq!(get(c, &app.id)?.jump_host_id, None);
             Ok(())
         })
         .unwrap();

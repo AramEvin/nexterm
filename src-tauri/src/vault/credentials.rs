@@ -573,6 +573,7 @@ mod tests {
                 notes: String::new(),
                 favorite: false,
                 resource_monitor: true,
+                jump_host_id: None,
                 tags: vec![],
             };
             let sess = sessions::create(c, &input)?;

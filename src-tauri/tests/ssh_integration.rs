@@ -123,6 +123,7 @@ fn params_on(port: u16, auth: SshAuth, interaction: Interaction) -> SshConnectPa
         username: env("NEXTERM_TEST_SSH_USER"),
         auth,
         interaction,
+        jump: None,
     }
 }
 
@@ -778,4 +779,60 @@ async fn resource_monitor_reports_linux_readings_without_touching_the_shell() {
 
     handle.commands.send(SessionCommand::Close).await.unwrap();
     let _ = handle.task.await;
+}
+
+/// Where the test server can reach itself (it's also its own jump host).
+fn jump_target() -> (String, u16) {
+    let host =
+        std::env::var("NEXTERM_TEST_JUMP_TARGET_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+    let port = std::env::var("NEXTERM_TEST_JUMP_TARGET_PORT")
+        .unwrap_or_else(|_| env("NEXTERM_TEST_SSH_PORT"))
+        .parse()
+        .unwrap();
+    (host, port)
+}
+
+#[tokio::test]
+#[ignore = "needs a real SSH server with TCP forwarding (see module docs)"]
+async fn chained_jump_hosts_tunnel_to_the_target() {
+    let password = env("NEXTERM_TEST_SSH_PASSWORD");
+    let (target_host, target_port) = jump_target();
+    // You → hop2 → hop1 → target, all the same test server.
+    let mut hop1 = params(&password);
+    hop1.host.clone_from(&target_host);
+    hop1.port = target_port;
+    hop1.jump = Some(Box::new(params(&password)));
+    let mut target = params(&password);
+    target.host = target_host;
+    target.port = target_port;
+    target.jump = Some(Box::new(hop1));
+
+    let sink = Arc::new(CollectSink::default());
+    let handle = SshProtocol::open(target, TERM, sink.clone())
+        .await
+        .expect("connect through two jump hosts");
+    handle
+        .commands
+        .send(SessionCommand::Write(b"echo JUMP-$((6*7))\n".to_vec()))
+        .await
+        .unwrap();
+    sink.wait_for("JUMP-42").await;
+    handle.commands.send(SessionCommand::Close).await.unwrap();
+    let _ = handle.task.await;
+}
+
+#[tokio::test]
+#[ignore = "needs a real SSH server with TCP forwarding (see module docs)"]
+async fn jump_host_that_cannot_reach_the_target_gives_a_clear_error() {
+    let password = env("NEXTERM_TEST_SSH_PASSWORD");
+    let mut target = params(&password);
+    target.host = "127.0.0.1".into();
+    target.port = 1; // nothing listens there
+    target.jump = Some(Box::new(params(&password)));
+    let sink = Arc::new(CollectSink::default());
+    let err = SshProtocol::open(target, TERM, sink)
+        .await
+        .err()
+        .expect("must fail");
+    assert_eq!(err.code(), "CONNECTION", "{err}");
 }

@@ -18,7 +18,9 @@ use uuid::Uuid;
 use crate::commands::library::LibraryDb;
 use crate::error::{AppError, AppResult};
 use crate::session::SessionManager;
-use crate::session::protocol::{OutputSink, SessionCommand, SessionStatus, TerminalProtocol};
+use crate::session::protocol::{
+    OutputSink, ProtocolKind, SessionCommand, SessionStatus, TerminalProtocol,
+};
 use crate::ssh::connections::ConnectSpec;
 use crate::ssh::prompt::{PromptResponse, PromptSink, SshPrompt};
 use crate::ssh::{
@@ -133,11 +135,30 @@ pub(crate) struct Resolved {
     pub username: String,
     pub auth: SshAuth,
     pub saved_session_id: Option<String>,
+    /// Connect through this host first (ProxyJump); itself possibly chained.
+    pub jump: Option<Box<Resolved>>,
+}
+
+impl Resolved {
+    /// Connection parameters for this hop and every jump host before it.
+    pub(crate) fn into_params(self, interaction: Interaction) -> SshConnectParams {
+        SshConnectParams {
+            host: self.host,
+            port: self.port,
+            username: self.username,
+            auth: self.auth,
+            jump: self
+                .jump
+                .map(|j| Box::new(j.into_params(interaction.clone()))),
+            interaction,
+        }
+    }
 }
 
 /// Turn a spec into concrete parameters. For saved sessions this reads the
 /// session, finds its credential (own or inherited from a folder) and
-/// decrypts it with the vault - all inside Rust.
+/// decrypts it with the vault - all inside Rust. Jump hosts are resolved the
+/// same way, from their own saved sessions.
 pub(crate) async fn resolve(
     spec: ConnectSpec,
     lib: &LibraryDb,
@@ -156,6 +177,7 @@ pub(crate) async fn resolve(
                 username,
                 auth,
                 saved_session_id: None,
+                jump: None,
             });
         }
         ConnectSpec::Saved {
@@ -173,65 +195,123 @@ pub(crate) async fn resolve(
                 "This is an FTP session: open it in the file manager.".into(),
             ));
         }
-        let credential = match credentials::resolve_for_session(c, &session.id)? {
-            Some(cid) if session.auth_method != "agent" => {
-                let vault = vault.as_ref().ok_or(AppError::VaultLocked)?;
-                Some(credentials::load_secret(c, vault, &cid)?)
-            }
-            _ => None,
-        };
-        let cred_username = credential
-            .as_ref()
-            .map(|(meta, _)| meta.username.clone())
-            .filter(|u| !u.is_empty());
-        let username = typed_user
-            .filter(|u| !u.trim().is_empty())
-            .or_else(|| Some(session.username.clone()).filter(|u| !u.is_empty()))
-            .or(cred_username)
-            .ok_or_else(|| {
-                AppError::CredentialsRequired("Enter a username for this session.".into())
-            })?;
-        let username = validate::username(&username)?;
+        let mut next_jump = session.jump_host_id.clone();
+        let mut target = resolve_one(c, vault.as_deref(), session, typed_user, typed_password)?;
 
-        let stored_password = credential.as_ref().and_then(|(_, s)| {
-            s.password
-                .as_ref()
-                .map(|p| SecretString::from(p.expose_secret().to_owned()))
-        });
-        let auth = match session.auth_method.as_str() {
-            "publickey" => {
-                let Some((_, secret)) = &credential else {
-                    return Err(AppError::CredentialsRequired(
-                        "This session uses a private key, but no key credential is linked. \
-                         Edit the session and choose one."
-                            .into(),
-                    ));
-                };
-                SshAuth::PublicKey(Arc::new(secret.decode_key()?))
+        // Walk the chain outwards: target ← hop1 ← hop2 … (hop N is dialled first).
+        let mut hops: Vec<Resolved> = Vec::new();
+        let mut seen = vec![session_id];
+        while let Some(id) = next_jump {
+            if seen.contains(&id) || hops.len() >= sessions::MAX_JUMP_HOPS {
+                return Err(AppError::Validation(
+                    "The jump hosts of this session form a loop or a chain that is too long."
+                        .into(),
+                ));
             }
-            "agent" => SshAuth::Agent,
-            "keyboard-interactive" => SshAuth::KeyboardInteractive {
-                password: stored_password.or(typed_password),
-            },
-            _ => match stored_password.or(typed_password) {
-                Some(pw) => SshAuth::Password(pw),
-                None => {
-                    return Err(AppError::CredentialsRequired(format!(
-                        "Enter the password for {}.",
-                        session.name
-                    )));
+            let hop = sessions::get(c, &id).map_err(|e| match e {
+                AppError::NotFound(_) => {
+                    AppError::Validation("The jump host of this session no longer exists.".into())
                 }
-            },
-        };
-        Ok(Resolved {
-            host: session.host,
-            port: session.port,
-            username,
-            auth,
-            saved_session_id: Some(session.id),
-        })
+                other => other,
+            })?;
+            if hop.protocol != ProtocolKind::Ssh {
+                return Err(AppError::Validation(
+                    "A jump host must be an SSH session.".into(),
+                ));
+            }
+            next_jump = hop.jump_host_id.clone();
+            seen.push(id);
+            let name = hop.name.clone();
+            let resolved =
+                resolve_one(c, vault.as_deref(), hop, None, None).map_err(|e| match e {
+                    // The login dialog asks for the target's credentials; a jump
+                    // host must have its own saved ones.
+                    AppError::CredentialsRequired(_) => AppError::Validation(format!(
+                        "The jump host \"{name}\" needs a saved username and password or key. \
+                     Edit it and link a credential (or use the SSH agent)."
+                    )),
+                    other => other,
+                })?;
+            hops.push(resolved);
+        }
+        // Nest: target.jump = hop1, hop1.jump = hop2, …
+        let mut chain: Option<Box<Resolved>> = None;
+        while let Some(mut hop) = hops.pop() {
+            hop.jump = chain;
+            chain = Some(Box::new(hop));
+        }
+        target.jump = chain;
+        Ok(target)
     })
     .await
+}
+
+/// One saved session → host, user and decrypted authentication.
+fn resolve_one(
+    c: &rusqlite::Connection,
+    vault: Option<&Vault>,
+    session: crate::storage::models::SavedSession,
+    typed_user: Option<String>,
+    typed_password: Option<SecretString>,
+) -> AppResult<Resolved> {
+    let credential = match credentials::resolve_for_session(c, &session.id)? {
+        Some(cid) if session.auth_method != "agent" => {
+            let vault = vault.ok_or(AppError::VaultLocked)?;
+            Some(credentials::load_secret(c, vault, &cid)?)
+        }
+        _ => None,
+    };
+    let cred_username = credential
+        .as_ref()
+        .map(|(meta, _)| meta.username.clone())
+        .filter(|u| !u.is_empty());
+    let username = typed_user
+        .filter(|u| !u.trim().is_empty())
+        .or_else(|| Some(session.username.clone()).filter(|u| !u.is_empty()))
+        .or(cred_username)
+        .ok_or_else(|| {
+            AppError::CredentialsRequired("Enter a username for this session.".into())
+        })?;
+    let username = validate::username(&username)?;
+
+    let stored_password = credential.as_ref().and_then(|(_, s)| {
+        s.password
+            .as_ref()
+            .map(|p| SecretString::from(p.expose_secret().to_owned()))
+    });
+    let auth = match session.auth_method.as_str() {
+        "publickey" => {
+            let Some((_, secret)) = &credential else {
+                return Err(AppError::CredentialsRequired(
+                    "This session uses a private key, but no key credential is linked. \
+                     Edit the session and choose one."
+                        .into(),
+                ));
+            };
+            SshAuth::PublicKey(Arc::new(secret.decode_key()?))
+        }
+        "agent" => SshAuth::Agent,
+        "keyboard-interactive" => SshAuth::KeyboardInteractive {
+            password: stored_password.or(typed_password),
+        },
+        _ => match stored_password.or(typed_password) {
+            Some(pw) => SshAuth::Password(pw),
+            None => {
+                return Err(AppError::CredentialsRequired(format!(
+                    "Enter the password for {}.",
+                    session.name
+                )));
+            }
+        },
+    };
+    Ok(Resolved {
+        host: session.host,
+        port: session.port,
+        username,
+        auth,
+        saved_session_id: Some(session.id),
+        jump: None,
+    })
 }
 
 /// Open the session described by `spec` and register it with the manager.
@@ -252,13 +332,7 @@ async fn open_spec(
         agent_socket: None,
     };
     let saved_id = resolved.saved_session_id.clone();
-    let params = SshConnectParams {
-        host: resolved.host,
-        port: resolved.port,
-        username: resolved.username,
-        auth: resolved.auth,
-        interaction,
-    };
+    let params = resolved.into_params(interaction);
     let sink: Arc<dyn OutputSink> = Arc::new(ChannelSink {
         output: channels.output,
         status: channels.status,

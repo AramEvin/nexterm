@@ -68,6 +68,9 @@ pub struct SessionInput {
     /// Live resource bar (default on).
     #[serde(default = "default_true")]
     pub resource_monitor: bool,
+    /// Saved SSH session to connect through (ProxyJump); chainable.
+    #[serde(default)]
+    pub jump_host_id: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
 }
