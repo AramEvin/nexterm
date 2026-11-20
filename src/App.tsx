@@ -17,6 +17,7 @@ import { Sidebar } from "@/components/sidebar/Sidebar";
 import { TerminalArea } from "@/components/terminal/TerminalArea";
 import { MultiExecDialog } from "@/components/dialogs/MultiExecDialog";
 import { PasteDialog } from "@/components/dialogs/PasteDialog";
+import { ImportDialog } from "@/components/dialogs/ImportDialog";
 import { FileDialogs } from "@/components/files/FileDialogs";
 import { FilesView } from "@/components/files/FilesView";
 import { useFilesStore } from "@/stores/files";
@@ -123,6 +124,7 @@ export default function App() {
       <ConfirmDialog />
       <FileDialogs />
       <PasteDialog />
+      <ImportDialog />
       <MultiExecDialog />
     </TooltipProvider>
   );

@@ -835,4 +835,8 @@ async fn jump_host_that_cannot_reach_the_target_gives_a_clear_error() {
         .err()
         .expect("must fail");
     assert_eq!(err.code(), "CONNECTION", "{err}");
+    assert!(
+        err.to_string().contains("couldn't reach 127.0.0.1:1"),
+        "{err}"
+    );
 }

@@ -59,6 +59,8 @@ export interface SessionInput {
   favorite: boolean;
   /** Live CPU / RAM / disk bar under the terminal (SSH). */
   resourceMonitor: boolean;
+  /** Saved SSH session to connect through (ProxyJump); `null` = direct. */
+  jumpHostId: string | null;
   tags: string[];
 }
 
@@ -71,4 +73,44 @@ export interface MoveRequest {
   id: string;
   parentId: string | null;
   beforeId: string | null;
+}
+
+/** `import::ImportSource` */
+export type ImportSource = "mobaxterm" | "putty";
+
+/** Where an import reads from (`commands::import::ImportFrom`). */
+export type ImportFrom = "mobaxterm-file" | "putty-file" | "putty-registry";
+
+export interface ImportedHop {
+  host: string;
+  port: number;
+  username: string;
+}
+
+/** A session found in the other program's file (`import::ImportedSession`). */
+export interface ImportedSession {
+  name: string;
+  folder: string[];
+  protocol: Protocol;
+  host: string;
+  port: number;
+  username: string;
+  authMethod: AuthMethod;
+  keyPath: string | null;
+  /** Jump hosts, dialled first to last. */
+  jump: ImportedHop[];
+}
+
+export interface ImportPreview {
+  source: ImportSource;
+  sessions: ImportedSession[];
+  skipped: { name: string; reason: string }[];
+}
+
+export interface ImportResult {
+  folderId: string;
+  created: number;
+  jumpHosts: number;
+  existing: number;
+  failed: number;
 }

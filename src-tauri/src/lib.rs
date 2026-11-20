@@ -105,6 +105,8 @@ pub fn run() -> anyhow::Result<()> {
             commands::ssh::ssh_write,
             commands::ssh::ssh_resize,
             commands::ssh::ssh_monitor_start,
+            commands::import::import_preview,
+            commands::import::import_apply,
             commands::ssh::ssh_monitor_stop,
             commands::ssh::ssh_disconnect,
             commands::ssh::ssh_reconnect,

@@ -1,5 +1,5 @@
 import { useMemo, useState, type SyntheticEvent } from "react";
-import { Check, Loader2, Save, Gauge, Star } from "lucide-react";
+import { Check, Gauge, Loader2, Route, Save, Star } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,9 +16,16 @@ import { IpcError } from "@/lib/ipc";
 import { buildIndex, folderPath, parseTags, SESSION_COLORS } from "@/lib/library";
 import { cn } from "@/lib/utils";
 import { useDialogStore, type EditorTarget } from "@/stores/dialogs";
+import { hopLabel, jumpCandidates, jumpChain, MAX_JUMP_HOPS } from "@/lib/jump";
 import { toInput, useLibraryStore } from "@/stores/library";
 import { useVaultStore } from "@/stores/vault";
-import { isFileProtocol, type AuthMethod, type Protocol, type SessionInput } from "@/types/library";
+import {
+  isFileProtocol,
+  type AuthMethod,
+  type Protocol,
+  type SavedSession,
+  type SessionInput,
+} from "@/types/library";
 
 /** Protocols shown in the picker; only SSH is available in this version. */
 const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
@@ -65,6 +72,7 @@ function blankInput(folderId: string | null): SessionInput {
     notes: "",
     favorite: false,
     resourceMonitor: true,
+    jumpHostId: null,
     tags: [],
   };
 }
@@ -204,8 +212,9 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
               const keep = credentials.find((c) => c.id === form.credentialId);
               update({
                 protocol,
-                // FTP logs in with a password only.
+                // FTP logs in with a password only, and directly.
                 authMethod: ftp ? "password" : form.authMethod,
+                jumpHostId: ftp ? null : form.jumpHostId,
                 credentialId: ftp && keep?.kind === "key" ? null : form.credentialId,
               });
             }}
@@ -355,6 +364,18 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
         </p>
       </fieldset>
 
+      {form.protocol === "ssh" && (
+        <JumpHostField
+          sessions={sessions}
+          selfId={editing ? target.session.id : null}
+          value={form.jumpHostId}
+          name={form.name || form.host || "this session"}
+          onChange={(jumpHostId) => {
+            update({ jumpHostId });
+          }}
+        />
+      )}
+
       <div className="grid gap-1.5">
         <Label htmlFor="se-tags">Tags</Label>
         <Input
@@ -463,5 +484,55 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+function JumpHostField({
+  sessions,
+  selfId,
+  value,
+  name,
+  onChange,
+}: {
+  sessions: SavedSession[];
+  selfId: string | null;
+  value: string | null;
+  name: string;
+  onChange: (id: string | null) => void;
+}) {
+  const candidates = jumpCandidates(sessions, selfId);
+  const chain = jumpChain(sessions, value);
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor="se-jump" className="flex items-center gap-1.5">
+        <Route className="size-3.5" /> Jump host (ProxyJump)
+      </Label>
+      <select
+        id="se-jump"
+        className={selectClass}
+        value={value ?? ""}
+        onChange={(e) => {
+          onChange(e.target.value || null);
+        }}
+      >
+        <option value="">(none, connect directly)</option>
+        {candidates.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name === hopLabel(s) ? s.name : `${s.name} (${hopLabel(s)})`}
+          </option>
+        ))}
+      </select>
+      {chain.length > 0 ? (
+        <p className="text-muted-foreground text-xs" data-testid="jump-route">
+          Route: You → {chain.map((h) => h.name).join(" → ")} → {name}. Each jump host logs in with
+          its own saved credential (or the SSH agent) and its own host-key check.
+        </p>
+      ) : (
+        <p className="text-muted-foreground text-xs">
+          For servers you can only reach through a bastion. Pick a saved SSH session; it can have a
+          jump host of its own (up to {MAX_JUMP_HOPS}).
+        </p>
+      )}
+    </div>
   );
 }

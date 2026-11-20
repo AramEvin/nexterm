@@ -8,6 +8,7 @@
 //! otherwise the frontend cannot call it (least privilege).
 
 pub mod app;
+pub mod import;
 pub mod library;
 pub mod sftp;
 pub mod ssh;

@@ -1,4 +1,13 @@
-import { FolderPlus, FolderTree, KeyRound, Plus, Search, Settings, X } from "lucide-react";
+import {
+  FileInput,
+  FolderPlus,
+  FolderTree,
+  KeyRound,
+  Plus,
+  Search,
+  Settings,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -6,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { LibraryTree } from "@/components/sidebar/LibraryTree";
 import { useDialogStore } from "@/stores/dialogs";
+import { useImportDialog } from "@/stores/importDialog";
 import { useLibraryStore } from "@/stores/library";
 import { useUiStore } from "@/stores/ui";
 
@@ -19,6 +29,7 @@ export function Sidebar() {
   const openEditor = useDialogStore((s) => s.openEditor);
   const openCredentials = useDialogStore((s) => s.openCredentials);
   const newFolder = useLibraryStore((s) => s.newFolder);
+  const openImport = useImportDialog((s) => s.show);
 
   return (
     <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border flex h-full shrink-0 border-r">
@@ -31,7 +42,7 @@ export function Sidebar() {
           <KeyRound />
         </RailButton>
         <div className="flex-1" />
-        <RailButton label="Settings (Phase 7)" disabled>
+        <RailButton label="Settings (coming in 1.0)" disabled>
           <Settings />
         </RailButton>
       </nav>
@@ -47,6 +58,20 @@ export function Sidebar() {
               Sessions
             </span>
             <div className="flex items-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Import sessions"
+                    disabled={libraryError !== null}
+                    onClick={openImport}
+                  >
+                    <FileInput />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Import from MobaXterm or PuTTY</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

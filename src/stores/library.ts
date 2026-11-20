@@ -196,6 +196,7 @@ export function toInput(s: SavedSession): SessionInput {
     notes: s.notes,
     favorite: s.favorite,
     resourceMonitor: s.resourceMonitor,
+    jumpHostId: s.jumpHostId,
     tags: s.tags,
   };
 }

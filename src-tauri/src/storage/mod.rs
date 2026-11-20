@@ -13,7 +13,7 @@
 pub mod folders;
 pub mod models;
 pub mod sessions;
-mod validate;
+pub(crate) mod validate;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

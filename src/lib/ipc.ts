@@ -8,6 +8,13 @@
 import { Channel, invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 import type {
+  ImportFrom,
+  ImportPreview,
+  ImportResult,
+  ImportSource,
+  ImportedSession,
+} from "@/types/library";
+import type {
   Credential,
   KnownHost,
   PromptResponse,
@@ -405,4 +412,17 @@ export function pickLocalFolder(): Promise<string | null> {
 /** Native multi-file picker; empty if cancelled. */
 export function pickLocalFiles(): Promise<string[]> {
   return call<string[]>("pick_local_files");
+}
+
+/** Pick the file (Rust-side dialog) and parse it; `null` if the dialog was closed. */
+export function importPreview(from: ImportFrom): Promise<ImportPreview | null> {
+  return call<ImportPreview | null>("import_preview", { from });
+}
+
+export function importApply(
+  source: ImportSource,
+  sessions: ImportedSession[],
+  skipExisting: boolean,
+): Promise<ImportResult> {
+  return call<ImportResult>("import_apply", { source, sessions, skipExisting });
 }

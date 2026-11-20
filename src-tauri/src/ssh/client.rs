@@ -204,20 +204,44 @@ pub async fn connect(params: SshConnectParams) -> AppResult<SshClient> {
 
     // The connect timeout covers TCP + key exchange, not the time the user
     // spends reading a host-key prompt (that has its own timeout).
-    let connected = tokio::time::timeout(CONNECT_TIMEOUT + PROMPT_TIMEOUT, async {
-        match &via {
-            None => client::connect(config, (host.as_str(), port), handler).await,
-            Some(jump) => {
-                let channel = jump
-                    .handle
-                    .channel_open_direct_tcpip(host.as_str(), u32::from(port), "127.0.0.1", 0)
-                    .await
-                    .map_err(|e| {
-                        tracing::warn!(error = %e, jump = %jump.host, "jump host refused the tunnel");
-                        e
-                    })?;
-                client::connect_stream(config, channel.into_stream(), handler).await
+    // Through a jump host: ask it to open a TCP tunnel to the target first,
+    // so a refusal gets its own clear message.
+    let tunnel = match &via {
+        None => None,
+        Some(jump) => {
+            let opened = tokio::time::timeout(
+                CONNECT_TIMEOUT,
+                jump.handle.channel_open_direct_tcpip(
+                    host.as_str(),
+                    u32::from(port),
+                    "127.0.0.1",
+                    0,
+                ),
+            )
+            .await;
+            match opened {
+                Ok(Ok(channel)) => Some(channel),
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, jump = %jump.host, %host, port, "jump host refused the tunnel");
+                    return Err(AppError::Connection(format!(
+                        "The jump host {} couldn't reach {host}:{port}. Check the host name and port \
+                         as seen from the jump host, and that it allows TCP forwarding.",
+                        jump.host
+                    )));
+                }
+                Err(_) => {
+                    return Err(AppError::Connection(format!(
+                        "Timed out opening a tunnel to {host}:{port} through {}.",
+                        jump.host
+                    )));
+                }
             }
+        }
+    };
+    let connected = tokio::time::timeout(CONNECT_TIMEOUT + PROMPT_TIMEOUT, async {
+        match tunnel {
+            None => client::connect(config, (host.as_str(), port), handler).await,
+            Some(channel) => client::connect_stream(config, channel.into_stream(), handler).await,
         }
     })
     .await;

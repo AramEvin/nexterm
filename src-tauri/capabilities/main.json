@@ -24,6 +24,8 @@
     "allow-ssh-write",
     "allow-ssh-resize",
     "allow-ssh-monitor-start",
+    "allow-import-preview",
+    "allow-import-apply",
     "allow-ssh-monitor-stop",
     "allow-ssh-disconnect",
     "allow-ssh-reconnect",

@@ -1,5 +1,5 @@
 import { useState, type SyntheticEvent } from "react";
-import { Loader2, Server, Zap } from "lucide-react";
+import { Loader2, Route, Server, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { handleConnectError } from "@/lib/connect";
 import { IpcError } from "@/lib/ipc";
+import { jumpChain } from "@/lib/jump";
 import { useDialogStore, type ConnectTarget } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
 import { useSessionStore } from "@/stores/session";
@@ -78,8 +79,13 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
   const connecting = useSessionStore((s) => s.connecting);
   const createSession = useLibraryStore((s) => s.createSession);
   const reloadLibrary = useLibraryStore((s) => s.load);
-
   const saved = target.mode === "saved" ? target.session : null;
+  const jumpHostId = saved?.jumpHostId ?? null;
+  const route = useLibraryStore((s) =>
+    jumpChain(s.sessions, jumpHostId)
+      .map((h) => h.name)
+      .join(" → "),
+  );
   const initial = saved
     ? { host: saved.host, port: String(saved.port), username: saved.username }
     : lastQuick;
@@ -123,6 +129,7 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
             notes: "",
             favorite: false,
             resourceMonitor: true,
+            jumpHostId: null,
             tags: [],
           }).catch(() => undefined);
         }
@@ -162,6 +169,11 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
           {saved ? (
             <span className="flex items-center gap-1.5">
               <Server className="size-3.5" /> {saved.host}:{saved.port}
+              {route && (
+                <span className="flex items-center gap-1">
+                  <Route className="ml-1 size-3.5" /> via {route}
+                </span>
+              )}
             </span>
           ) : (
             "Open an SSH session with a password."

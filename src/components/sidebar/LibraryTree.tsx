@@ -1,5 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Route,
   ChevronRight,
   Copy,
   FolderClosed,
@@ -33,6 +34,7 @@ import {
   type LibraryIndex,
 } from "@/lib/library";
 import { openSavedSession } from "@/lib/connect";
+import { jumpChain } from "@/lib/jump";
 import { cn } from "@/lib/utils";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
@@ -581,13 +583,20 @@ function SessionRow({
   actions,
 }: SessionRowProps) {
   const target = `${session.username ? `${session.username}@` : ""}${session.host}${session.port === 22 ? "" : `:${session.port}`}`;
+  const route = useLibraryStore((s) =>
+    session.jumpHostId === null
+      ? ""
+      : jumpChain(s.sessions, session.jumpHostId)
+          .map((h) => h.name)
+          .join(" → "),
+  );
 
   return (
     <div
       role="treeitem"
       aria-selected={false}
       tabIndex={0}
-      title={[target, ...session.tags.map((t) => `#${t}`), session.notes]
+      title={[target, route && `via ${route}`, ...session.tags.map((t) => `#${t}`), session.notes]
         .filter(Boolean)
         .join("\n")}
       data-drop={draggable ? "session" : undefined}
@@ -639,6 +648,12 @@ function SessionRow({
         >
           FTPS
         </span>
+      )}
+      {route && (
+        <Route
+          className="text-muted-foreground size-3 shrink-0"
+          aria-label={`Through jump host ${route}`}
+        />
       )}
       {session.favorite && !subtitle && (
         <Star className="size-3 shrink-0 fill-amber-400 text-amber-400" aria-label="Favourite" />

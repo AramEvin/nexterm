@@ -1,8 +1,9 @@
-import { FolderOpen, KeyRound, Terminal, Zap } from "lucide-react";
+import { FileInput, FolderOpen, KeyRound, Terminal, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useDialogStore } from "@/stores/dialogs";
 import { useFilesStore } from "@/stores/files";
+import { useImportDialog } from "@/stores/importDialog";
 import { useVaultStore } from "@/stores/vault";
 
 interface WelcomePaneProps {
@@ -15,6 +16,7 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
   const openVaultSetup = useDialogStore((s) => s.openVaultSetup);
   const openCredentials = useDialogStore((s) => s.openCredentials);
   const openFiles = useFilesStore((s) => s.openTab);
+  const openImport = useImportDialog((s) => s.show);
   return (
     <div className="flex h-full items-center justify-center p-8">
       <div className="flex max-w-md flex-col items-center gap-6 text-center">
@@ -43,6 +45,9 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
             <KeyRound /> {initialized ? "Credentials" : "Set up vault"}
           </Button>
         </div>
+        <Button variant="link" size="sm" className="-mt-3" onClick={openImport}>
+          <FileInput /> Import sessions from MobaXterm or PuTTY
+        </Button>
         <p className="text-muted-foreground/70 text-xs">
           Tip: double-click a saved session to connect. Link a saved password or key in the
           session&apos;s Login settings to skip typing it. Right-click a session → Open in file

@@ -21,6 +21,8 @@ fn main() {
             "ssh_write",
             "ssh_resize",
             "ssh_monitor_start",
+            "import_preview",
+            "import_apply",
             "ssh_monitor_stop",
             "ssh_disconnect",
             "ssh_reconnect",
