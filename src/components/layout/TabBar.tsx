@@ -11,6 +11,7 @@ import {
   Radio,
   RotateCw,
   Rows2,
+  SquareTerminal,
   TerminalSquare,
   Unplug,
   X,
@@ -30,6 +31,7 @@ import { duplicateTab, reconnectTab, splitTab } from "@/lib/connect";
 import { MAX_PANES, leaves } from "@/lib/splits";
 import { cn } from "@/lib/utils";
 import { openFilesForTerminal, useFilesStore, type FilesTab } from "@/stores/files";
+import { useLocalDialog } from "@/stores/localDialog";
 import { useMultiExecDialog } from "@/stores/multiExecDialog";
 import { HOME_TAB, activePane, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
 
@@ -117,6 +119,7 @@ function useTabDrag(moveTab: (tabId: string, targetId: string) => void) {
 
 /** Tab strip: pinned Home tab + one tab per session (scrolls horizontally when full). */
 export function TabBar({ onNewSession }: TabBarProps) {
+  const openLocalDialog = useLocalDialog((s) => s.show);
   const allTabs = useSessionStore((s) => s.tabs);
   // Split panes live inside their tab; only tabs appear in the strip.
   const tabs = allTabs.filter((t) => t.parentId === null);
@@ -199,6 +202,20 @@ export function TabBar({ onNewSession }: TabBarProps) {
           </Button>
         </TooltipTrigger>
         <TooltipContent>Quick connect</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="mb-0.5 shrink-0"
+            aria-label="New local terminal"
+            onClick={openLocalDialog}
+          >
+            <SquareTerminal />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Local terminal (Ctrl+Shift+T)</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -375,6 +392,14 @@ function SessionTabItem({
             />
           ) : (
             <span className="truncate">{title}</span>
+          )}
+          {tab.protocol === "telnet" && (
+            <span
+              className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] text-amber-300"
+              title="Telnet sends everything, including passwords, unencrypted"
+            >
+              Unencrypted
+            </span>
           )}
           {paneCount > 1 && (
             <span

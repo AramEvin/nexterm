@@ -18,6 +18,7 @@ import { TerminalArea } from "@/components/terminal/TerminalArea";
 import { MultiExecDialog } from "@/components/dialogs/MultiExecDialog";
 import { PasteDialog } from "@/components/dialogs/PasteDialog";
 import { ImportDialog } from "@/components/dialogs/ImportDialog";
+import { LocalTerminalDialog } from "@/components/dialogs/LocalTerminalDialog";
 import { FileDialogs } from "@/components/files/FileDialogs";
 import { FilesView } from "@/components/files/FilesView";
 import { useFilesStore } from "@/stores/files";
@@ -125,6 +126,7 @@ export default function App() {
       <FileDialogs />
       <PasteDialog />
       <ImportDialog />
+      <LocalTerminalDialog />
       <MultiExecDialog />
     </TooltipProvider>
   );

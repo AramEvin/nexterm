@@ -4,7 +4,7 @@ import { Radio, Square } from "lucide-react";
 import { ResourceBar } from "@/components/terminal/ResourceBar";
 import { TerminalView } from "@/components/terminal/TerminalView";
 import { Button } from "@/components/ui/button";
-import { splitTab } from "@/lib/connect";
+import { openDefaultLocalTerminal, splitTab } from "@/lib/connect";
 import { layoutRects, leaves, neighbour, type DividerRect, type Rect } from "@/lib/splits";
 import { cn } from "@/lib/utils";
 import { useMultiExecDialog } from "@/stores/multiExecDialog";
@@ -220,6 +220,14 @@ function MultiExecBanner({ count }: { count: number }) {
 function useSplitShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl+Shift+T: new local terminal, from anywhere.
+      if (e.ctrlKey && e.shiftKey && !e.altKey && e.code === "KeyT") {
+        if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        void openDefaultLocalTerminal();
+        return;
+      }
       const state = useSessionStore.getState();
       const pane = activePane(state);
       // Only while a terminal tab is active (not Home or a file manager) and

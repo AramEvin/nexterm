@@ -1,9 +1,10 @@
-import { FileInput, FolderOpen, KeyRound, Terminal, Zap } from "lucide-react";
+import { FileInput, FolderOpen, KeyRound, SquareTerminal, Terminal, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useDialogStore } from "@/stores/dialogs";
 import { useFilesStore } from "@/stores/files";
 import { useImportDialog } from "@/stores/importDialog";
+import { useLocalDialog } from "@/stores/localDialog";
 import { useVaultStore } from "@/stores/vault";
 
 interface WelcomePaneProps {
@@ -17,6 +18,7 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
   const openCredentials = useDialogStore((s) => s.openCredentials);
   const openFiles = useFilesStore((s) => s.openTab);
   const openImport = useImportDialog((s) => s.show);
+  const openLocal = useLocalDialog((s) => s.show);
   return (
     <div className="flex h-full items-center justify-center p-8">
       <div className="flex max-w-md flex-col items-center gap-6 text-center">
@@ -26,12 +28,16 @@ export function WelcomePane({ onQuickConnect }: WelcomePaneProps) {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">Welcome to NexTerm</h1>
           <p className="text-muted-foreground text-sm">
-            A fast, open-source SSH &amp; SFTP client with an encrypted credential vault.
+            A fast, open-source terminal for SSH, Telnet, serial and local shells, with SFTP and an
+            encrypted credential vault.
           </p>
         </div>
         <div className="flex gap-2">
           <Button onClick={onQuickConnect}>
             <Zap /> Quick connect
+          </Button>
+          <Button variant="outline" onClick={openLocal}>
+            <SquareTerminal /> Local terminal
           </Button>
           <Button
             variant="outline"

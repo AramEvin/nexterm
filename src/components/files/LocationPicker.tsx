@@ -23,10 +23,13 @@ export function LocationPicker({
   const [query, setQuery] = useState("");
   const q = useDeferredValue(query.trim().toLowerCase());
 
-  const terminals = tabs.filter((t) => t.connectionId !== null);
+  // Only SSH terminals can lend their login to SFTP.
+  const terminals = tabs.filter((t) => t.connectionId !== null && t.protocol === "ssh");
   const matches = useMemo(() => {
     // SSH sessions open over SFTP; FTP/FTPS sessions directly.
-    const ssh = sessions;
+    const ssh = sessions.filter(
+      (s) => s.protocol === "ssh" || s.protocol === "ftp" || s.protocol === "ftps",
+    );
     const hit = q
       ? ssh.filter((s) =>
           [s.name, s.host, s.username, ...s.tags].some((v) => v.toLowerCase().includes(q)),

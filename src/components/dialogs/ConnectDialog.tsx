@@ -130,6 +130,7 @@ function ConnectForm({ target, onDone }: { target: ConnectTarget; onDone: () => 
             favorite: false,
             resourceMonitor: true,
             jumpHostId: null,
+            options: {},
             tags: [],
           }).catch(() => undefined);
         }

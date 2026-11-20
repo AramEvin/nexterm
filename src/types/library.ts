@@ -1,11 +1,69 @@
 /** Mirrors `src-tauri/src/storage/models.rs` (camelCase on the wire). */
 
-export type Protocol = "ssh" | "ftp" | "ftps";
+export type Protocol = "ssh" | "ftp" | "ftps" | "telnet" | "serial" | "local";
 
 /** FTP/FTPS sessions open in the file manager, not a terminal. */
 export function isFileProtocol(p: Protocol): boolean {
   return p === "ftp" || p === "ftps";
 }
+
+/** Uses host and port (not a COM port or a local shell). */
+export function isNetworkProtocol(p: Protocol): boolean {
+  return p !== "serial" && p !== "local";
+}
+
+/** Has a username / password / key login handled by NexTerm. */
+export function hasLogin(p: Protocol): boolean {
+  return p === "ssh" || p === "ftp" || p === "ftps";
+}
+
+/** Sends everything in clear text. */
+export function isUnencrypted(p: Protocol): boolean {
+  return p === "ftp" || p === "telnet";
+}
+
+export type Parity = "none" | "odd" | "even";
+export type FlowControl = "none" | "software" | "hardware";
+
+/** `session::options::SerialOptions` */
+export interface SerialOptions {
+  port: string;
+  baudRate: number;
+  dataBits: number;
+  parity: Parity;
+  stopBits: number;
+  flowControl: FlowControl;
+}
+
+export type LocalShell = "powershell" | "pwsh" | "cmd" | "wsl" | "default";
+
+/** `session::options::LocalOptions` */
+export interface LocalOptions {
+  shell: LocalShell;
+  /** WSL distribution; empty = the default one. */
+  wslDistro: string;
+}
+
+/** `session::options::SessionOptions` */
+export interface SessionOptions {
+  serial?: SerialOptions;
+  local?: LocalOptions;
+}
+
+export interface LocalShellInfo {
+  shell: LocalShell;
+  label: string;
+  available: boolean;
+}
+
+export const DEFAULT_SERIAL: SerialOptions = {
+  port: "",
+  baudRate: 9600,
+  dataBits: 8,
+  parity: "none",
+  stopBits: 1,
+  flowControl: "none",
+};
 
 export type AuthMethod = "password" | "publickey" | "agent" | "keyboard-interactive";
 
@@ -36,6 +94,7 @@ export interface SavedSession {
   favorite: boolean;
   /** Live CPU / RAM / disk bar under the terminal (SSH). */
   resourceMonitor: boolean;
+  options: SessionOptions;
   tags: string[];
   sortOrder: number;
   createdAt: number;
@@ -61,6 +120,8 @@ export interface SessionInput {
   resourceMonitor: boolean;
   /** Saved SSH session to connect through (ProxyJump); `null` = direct. */
   jumpHostId: string | null;
+  /** Serial line settings or local shell choice. */
+  options: SessionOptions;
   tags: string[];
 }
 
@@ -99,6 +160,7 @@ export interface ImportedSession {
   keyPath: string | null;
   /** Jump hosts, dialled first to last. */
   jump: ImportedHop[];
+  options: SessionOptions;
 }
 
 export interface ImportPreview {

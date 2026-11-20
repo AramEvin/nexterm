@@ -11,7 +11,7 @@ import { reconnectTab, splitTab } from "@/lib/connect";
 import { MAX_PANES } from "@/lib/splits";
 import { cn } from "@/lib/utils";
 import { useFilesStore } from "@/stores/files";
-import { tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
+import { tabTarget, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
 
 interface TerminalViewProps {
   tab: SessionTab;
@@ -102,7 +102,7 @@ export function TerminalView({ tab, visible, split, focused, paneCount }: Termin
               style={{ backgroundColor: tab.color }}
             />
           )}
-          <span className="truncate" title={`${tab.username}@${tab.host}:${String(tab.port)}`}>
+          <span className="truncate" title={tabTarget(tab)}>
             {tabTitle(tab)}
           </span>
           {split && (
@@ -142,7 +142,8 @@ export function TerminalView({ tab, visible, split, focused, paneCount }: Termin
           role="status"
           className="bg-muted/50 text-muted-foreground flex items-center gap-2 border-b px-4 py-2 text-sm"
         >
-          <Loader2 className="size-4 animate-spin" /> Connecting to {tab.host}:{tab.port}…
+          <Loader2 className="size-4 animate-spin" />{" "}
+          {tab.protocol === "local" ? `Starting ${tab.host}…` : `Connecting to ${tabTarget(tab)}…`}
         </div>
       )}
       <div className="flex min-h-0 flex-1">
@@ -164,15 +165,17 @@ export function TerminalView({ tab, visible, split, focused, paneCount }: Termin
               >
                 <Rows2 />
               </PaneButton>
-              <PaneButton
-                label={sideOpen ? "Hide SFTP panel" : "Show SFTP panel"}
-                pressed={sideOpen}
-                onClick={() => {
-                  toggleSide(tab.id);
-                }}
-              >
-                <FolderTree />
-              </PaneButton>
+              {tab.protocol === "ssh" && (
+                <PaneButton
+                  label={sideOpen ? "Hide SFTP panel" : "Show SFTP panel"}
+                  pressed={sideOpen}
+                  onClick={() => {
+                    toggleSide(tab.id);
+                  }}
+                >
+                  <FolderTree />
+                </PaneButton>
+              )}
             </div>
           )}
         </div>

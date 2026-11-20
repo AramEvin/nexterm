@@ -2,7 +2,7 @@ import { Circle, Layers, Lock, LockOpen, ShieldOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useDialogStore } from "@/stores/dialogs";
-import { activePane, useSessionStore } from "@/stores/session";
+import { activePane, tabTarget, useSessionStore } from "@/stores/session";
 import { useVaultStore } from "@/stores/vault";
 import { useUiStore } from "@/stores/ui";
 
@@ -36,8 +36,11 @@ export function StatusBar() {
         <span className="truncate">
           {tab ? (
             <>
-              <span className="text-foreground">{tab.username}</span>@{tab.host}:{tab.port} —{" "}
-              {STATE_LABEL[tab.state]}
+              <span className="text-foreground">{tabTarget(tab)}</span>
+              {tab.protocol === "telnet" && (
+                <span className="text-amber-300"> · unencrypted</span>
+              )}{" "}
+              — {STATE_LABEL[tab.state]}
             </>
           ) : (
             "No active session"

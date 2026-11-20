@@ -35,6 +35,7 @@ import {
 } from "@/lib/library";
 import { openSavedSession } from "@/lib/connect";
 import { jumpChain } from "@/lib/jump";
+import { isFileProtocol, isNetworkProtocol } from "@/types/library";
 import { cn } from "@/lib/utils";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
@@ -381,13 +382,15 @@ function TreeMenu({
             >
               <Plug /> Connect
             </ContextMenuItem>
-            <ContextMenuItem
-              onSelect={() => {
-                openFilesForSaved(target.session);
-              }}
-            >
-              <FolderSync /> Open in file manager
-            </ContextMenuItem>
+            {(target.session.protocol === "ssh" || isFileProtocol(target.session.protocol)) && (
+              <ContextMenuItem
+                onSelect={() => {
+                  openFilesForSaved(target.session);
+                }}
+              >
+                <FolderSync /> Open in file manager
+              </ContextMenuItem>
+            )}
             <ContextMenuItem
               onSelect={() => {
                 actions.edit(target.session);
@@ -582,7 +585,11 @@ function SessionRow({
   consumeClick,
   actions,
 }: SessionRowProps) {
-  const target = `${session.username ? `${session.username}@` : ""}${session.host}${session.port === 22 ? "" : `:${session.port}`}`;
+  const target = isNetworkProtocol(session.protocol)
+    ? `${session.username ? `${session.username}@` : ""}${session.host}${session.port === 22 ? "" : `:${String(session.port)}`}`
+    : session.options.serial
+      ? `${session.options.serial.port} · ${String(session.options.serial.baudRate)} baud`
+      : session.host;
   const route = useLibraryStore((s) =>
     session.jumpHostId === null
       ? ""
@@ -639,6 +646,23 @@ function SessionRow({
           aria-label="FTP, unencrypted"
         >
           FTP
+        </span>
+      )}
+      {session.protocol === "telnet" && (
+        <span
+          className="shrink-0 rounded border border-amber-500/50 px-1 text-[10px] font-medium text-amber-300"
+          title="Telnet: unencrypted"
+          aria-label="Telnet, unencrypted"
+        >
+          TELNET
+        </span>
+      )}
+      {(session.protocol === "serial" || session.protocol === "local") && (
+        <span
+          className="text-muted-foreground shrink-0 rounded border px-1 text-[10px]"
+          title={session.protocol === "serial" ? "Serial line" : "Local terminal"}
+        >
+          {session.protocol === "serial" ? "COM" : "LOCAL"}
         </span>
       )}
       {session.protocol === "ftps" && (

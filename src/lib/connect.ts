@@ -3,11 +3,12 @@
  * password, or react to a changed host key. Every error is routed here so
  * the reaction is the same wherever a connection is started.
  */
-import { IpcError } from "@/lib/ipc";
+import { IpcError, localShells } from "@/lib/ipc";
 import { useDialogStore } from "@/stores/dialogs";
 import { useLibraryStore } from "@/stores/library";
 import { openFilesForSaved } from "@/stores/files";
 import type { SplitDirection } from "@/lib/splits";
+import { useLocalDialog } from "@/stores/localDialog";
 import { useSessionStore } from "@/stores/session";
 import type { AppErrorCode } from "@/types/ipc";
 import { isFileProtocol, type SavedSession } from "@/types/library";
@@ -123,4 +124,19 @@ export async function splitTab(paneId: string, direction: SplitDirection): Promi
 async function reconnectTabFromDuplicate(failedTabId: string, sourceTabId: string): Promise<void> {
   await useSessionStore.getState().closeTab(failedTabId);
   await duplicateTab(sourceTabId);
+}
+
+/** Open a local terminal with the first shell this PC has (Ctrl+Shift+T). */
+export async function openDefaultLocalTerminal(): Promise<void> {
+  try {
+    const shells = await localShells();
+    const first = shells.find((s) => s.available);
+    if (!first) {
+      useLocalDialog.getState().show();
+      return;
+    }
+    await useSessionStore.getState().openLocal({ shell: first.shell, wslDistro: "" }, first.label);
+  } catch {
+    useLocalDialog.getState().show(); // shows the reason
+  }
 }

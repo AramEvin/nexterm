@@ -8,6 +8,8 @@
 import { Channel, invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 import type {
+  LocalOptions,
+  LocalShellInfo,
   ImportFrom,
   ImportPreview,
   ImportResult,
@@ -412,6 +414,24 @@ export function pickLocalFolder(): Promise<string | null> {
 /** Native multi-file picker; empty if cancelled. */
 export function pickLocalFiles(): Promise<string[]> {
   return call<string[]>("pick_local_files");
+}
+
+/** Open a local terminal that isn't a saved session (PowerShell, CMD, WSL, shell). */
+export function localOpen(
+  options: LocalOptions,
+  cols: number,
+  rows: number,
+  cb: SshSessionCallbacks,
+): Promise<SshSessionInfo> {
+  return call<SshSessionInfo>("local_open", {
+    request: { options, cols, rows },
+    ...sessionChannels(cb),
+  });
+}
+
+/** Shells this PC can open, the platform default first. */
+export function localShells(): Promise<LocalShellInfo[]> {
+  return call<LocalShellInfo[]>("local_shells");
 }
 
 /** Pick the file (Rust-side dialog) and parse it; `null` if the dialog was closed. */

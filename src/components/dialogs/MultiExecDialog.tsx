@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useMultiExecDialog } from "@/stores/multiExecDialog";
-import { panesOf, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
+import { tabTarget, panesOf, tabTitle, useSessionStore, type SessionTab } from "@/stores/session";
 
 /**
  * Turning multi-exec on is an explicit choice: pick the terminals, confirm.
@@ -167,7 +167,7 @@ function PaneOption({
       />
       <span className="truncate">
         {index !== null && <span className="text-muted-foreground">Pane {index}: </span>}
-        {pane.username}@{pane.host}
+        {tabTarget(pane)}
       </span>
       {!connected && <span className="text-muted-foreground ml-auto text-xs">not connected</span>}
     </label>

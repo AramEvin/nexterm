@@ -36,6 +36,7 @@ const session = (
   authMethod: "password",
   credentialId: null,
   jumpHostId: null,
+  options: {},
   color: null,
   notes: "",
   favorite: false,

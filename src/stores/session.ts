@@ -20,6 +20,7 @@ import {
   sshConnectSaved,
   sshDisconnect,
   sshDuplicate,
+  localOpen,
   sshForget,
   sshReconnect,
   type SshSessionCallbacks,
@@ -39,7 +40,7 @@ import { DEFAULT_COLS, DEFAULT_ROWS, TerminalController, type UserInput } from "
 import { usePasteStore } from "@/stores/paste";
 import { usePromptStore } from "@/stores/prompts";
 import type { AppErrorCode, SessionStatus, SshSessionInfo } from "@/types/ipc";
-import type { SavedSession } from "@/types/library";
+import type { LocalOptions, Protocol, SavedSession } from "@/types/library";
 
 export type TabState = "connecting" | "connected" | "closed";
 
@@ -54,6 +55,8 @@ export interface SessionTab {
   color: string | null;
   /** Saved session this tab was opened from, if any. */
   savedSessionId: string | null;
+  /** SSH, Telnet, serial line or local shell. */
+  protocol: Protocol;
   host: string;
   port: number;
   username: string;
@@ -121,6 +124,8 @@ interface SessionState {
     session: SavedSession,
     extra?: { username?: string; password?: string },
   ) => Promise<void>;
+  /** New tab with a local shell (not a saved session). Throws `IpcError` on failure. */
+  openLocal: (options: LocalOptions, title: string) => Promise<void>;
   /** Resolves with the error code if the attempt failed (the tab shows the reason). */
   reconnect: (tabId: string) => Promise<AppErrorCode | null>;
   duplicate: (tabId: string) => Promise<AppErrorCode | null>;
@@ -146,7 +151,15 @@ interface SessionState {
 }
 
 export function tabTitle(tab: SessionTab): string {
-  return tab.customTitle ?? `${tab.username}@${tab.host}`;
+  return tab.customTitle ?? (tab.username ? `${tab.username}@${tab.host}` : tab.host);
+}
+
+/** Where a terminal is connected: `user@host:port`, `COM3 · 115200 8N1`, `PowerShell`. */
+export function tabTarget(
+  tab: Pick<SessionTab, "protocol" | "username" | "host" | "port">,
+): string {
+  if (tab.protocol === "serial" || tab.protocol === "local") return tab.host;
+  return `${tab.username ? `${tab.username}@` : ""}${tab.host}:${String(tab.port)}`;
 }
 
 /** The tab (in the tab bar) a terminal belongs to. */
@@ -304,6 +317,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       customTitle: source.customTitle,
       color: source.color,
       savedSessionId: source.savedSessionId,
+      protocol: source.protocol,
       host: source.host,
       port: source.port,
       username: source.username,
@@ -383,6 +397,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
           customTitle: meta.title ?? null,
           color: meta.color ?? null,
           savedSessionId: meta.savedSessionId ?? null,
+          protocol: "ssh",
           host,
           port,
           username,
@@ -424,6 +439,7 @@ export const useSessionStore = create<SessionState>()((set, get) => {
           customTitle: session.name,
           color: session.color,
           savedSessionId: session.id,
+          protocol: session.protocol,
           host: session.host,
           port: session.port,
           username: extra.username ?? session.username,
@@ -431,7 +447,41 @@ export const useSessionStore = create<SessionState>()((set, get) => {
           sessionId: null,
           state: "connecting",
           closedReason: null,
-          resourceMonitor: session.resourceMonitor,
+          // The resource bar reads Linux servers over SSH only.
+          resourceMonitor: session.protocol === "ssh" && session.resourceMonitor,
+          controller,
+        });
+        started(info);
+      } catch (err) {
+        controller.dispose();
+        throw err;
+      } finally {
+        set({ connecting: false });
+      }
+    },
+
+    openLocal: async (options, title) => {
+      set({ connecting: true });
+      const id = crypto.randomUUID();
+      const controller = newController(id);
+      const { callbacks, started } = sessionCallbacks(id, controller);
+      try {
+        const info = await localOpen(options, DEFAULT_COLS, DEFAULT_ROWS, callbacks);
+        addTab({
+          id,
+          parentId: null,
+          customTitle: title,
+          color: null,
+          savedSessionId: null,
+          protocol: "local",
+          host: title,
+          port: 0,
+          username: "",
+          connectionId: info.connectionId,
+          sessionId: null,
+          state: "connecting",
+          closedReason: null,
+          resourceMonitor: false,
           controller,
         });
         started(info);
@@ -448,7 +498,9 @@ export const useSessionStore = create<SessionState>()((set, get) => {
       if (!tab || tab.state !== "closed" || !tab.connectionId) return null;
       const { controller, connectionId } = tab;
       patchTab(tabId, { state: "connecting", closedReason: null });
-      controller.notice(`Reconnecting to ${tab.host}:${String(tab.port)}…`);
+      controller.notice(
+        tab.protocol === "local" ? `Restarting ${tab.host}…` : `Reconnecting to ${tabTarget(tab)}…`,
+      );
       const { callbacks, started } = sessionCallbacks(tabId, controller);
       try {
         const { cols, rows } = controller.size;

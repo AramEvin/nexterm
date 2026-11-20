@@ -61,7 +61,10 @@ fn open_port(o: &SerialOptions) -> AppResult<Box<dyn serialport::SerialPort>> {
         .map_err(|e| {
             tracing::debug!(error = %e, kind = ?e.kind, "serial open failed");
             AppError::Connection(match e.kind {
-                serialport::ErrorKind::NoDevice => format!("{} isn't there (unplugged?).", o.port),
+                serialport::ErrorKind::NoDevice
+                | serialport::ErrorKind::Io(std::io::ErrorKind::NotFound) => {
+                    format!("{} isn't there (unplugged?).", o.port)
+                }
                 serialport::ErrorKind::Io(std::io::ErrorKind::PermissionDenied) => {
                     format!(
                         "{} is in use by another program, or access is denied.",

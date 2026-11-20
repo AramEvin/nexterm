@@ -19,27 +19,52 @@ import { useDialogStore, type EditorTarget } from "@/stores/dialogs";
 import { hopLabel, jumpCandidates, jumpChain, MAX_JUMP_HOPS } from "@/lib/jump";
 import { toInput, useLibraryStore } from "@/stores/library";
 import { useVaultStore } from "@/stores/vault";
+import { LocalFields, SerialFields, selectClass } from "@/components/dialogs/ProtocolFields";
 import {
+  DEFAULT_SERIAL,
+  hasLogin,
   isFileProtocol,
+  isNetworkProtocol,
+  type LocalOptions,
   type AuthMethod,
   type Protocol,
   type SavedSession,
   type SessionInput,
 } from "@/types/library";
 
-/** Protocols shown in the picker; only SSH is available in this version. */
+/** Protocols shown in the picker (RDP and VNC come in a later version). */
 const PROTOCOLS: { value: string; label: string; available: boolean }[] = [
   { value: "ssh", label: "SSH", available: true },
   { value: "ftps", label: "FTPS", available: true },
   { value: "ftp", label: "FTP (unencrypted)", available: true },
-  { value: "telnet", label: "Telnet (Phase 8)", available: false },
-  { value: "serial", label: "Serial / COM (Phase 8)", available: false },
-  { value: "local", label: "Local terminal (Phase 8)", available: false },
+  { value: "telnet", label: "Telnet (unencrypted)", available: true },
+  { value: "serial", label: "Serial (COM port)", available: true },
+  { value: "local", label: "Local terminal", available: true },
   { value: "rdp", label: "RDP (Phase 9)", available: false },
   { value: "vnc", label: "VNC (Phase 9)", available: false },
 ];
 
 /** Which credential kind each login method uses (agent uses none). */
+const STANDARD_PORTS = ["22", "21", "23"];
+const DEFAULT_PORT: Partial<Record<Protocol, string>> = {
+  ssh: "22",
+  ftp: "21",
+  ftps: "21",
+  telnet: "23",
+};
+const DEFAULT_LOCAL: LocalOptions = { shell: "powershell", wslDistro: "" };
+
+function shellLabel(o: LocalOptions): string {
+  const names: Record<LocalOptions["shell"], string> = {
+    powershell: "PowerShell",
+    pwsh: "PowerShell 7",
+    cmd: "Command Prompt",
+    wsl: "WSL",
+    default: "Shell",
+  };
+  return o.wslDistro ? `${names[o.shell]} · ${o.wslDistro}` : names[o.shell];
+}
+
 const CREDENTIAL_KIND: Record<AuthMethod, "password" | "key" | null> = {
   password: "password",
   publickey: "key",
@@ -54,9 +79,6 @@ const AUTH_HINT: Record<AuthMethod, string> = {
   "keyboard-interactive":
     "For servers with one-time codes. A saved password answers the password question automatically.",
 };
-
-const selectClass =
-  "border-input bg-background dark:bg-input/30 h-9 w-full rounded-md border px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]";
 
 function blankInput(folderId: string | null): SessionInput {
   return {
@@ -73,6 +95,7 @@ function blankInput(folderId: string | null): SessionInput {
     favorite: false,
     resourceMonitor: true,
     jumpHostId: null,
+    options: {},
     tags: [],
   };
 }
@@ -142,20 +165,30 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
   async function onSubmit(e: SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     const portNum = Number(port);
-    if (!form.host.trim()) {
+    const network = isNetworkProtocol(form.protocol);
+    const serial = form.protocol === "serial" ? (form.options.serial ?? DEFAULT_SERIAL) : null;
+    const local = form.protocol === "local" ? (form.options.local ?? DEFAULT_LOCAL) : null;
+    if (network && !form.host.trim()) {
       setError("Host is required.");
       return;
     }
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (network && (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)) {
       setError("Port must be between 1 and 65535.");
       return;
     }
+    if (serial && !serial.port.trim()) {
+      setError("Enter the serial port (for example COM3).");
+      return;
+    }
+    // Serial and local sessions keep their settings in `options`; Rust fills host.
+    const fallbackName = serial ? serial.port.trim() : local ? shellLabel(local) : form.host.trim();
     const input: SessionInput = {
       ...form,
-      name: form.name.trim() || form.host.trim(),
-      host: form.host.trim(),
-      username: form.username.trim(),
-      port: portNum,
+      name: form.name.trim() || fallbackName,
+      host: network ? form.host.trim() : "",
+      username: hasLogin(form.protocol) ? form.username.trim() : "",
+      port: network ? portNum : 1,
+      options: serial ? { serial } : local ? { local } : {},
       tags: parseTags(tags),
     };
     setSaving(true);
@@ -206,15 +239,21 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
             onChange={(e) => {
               const protocol = e.target.value as Protocol;
               // Keep a custom port; swap the standard one.
-              const standard = ["22", "21"];
-              if (standard.includes(port)) setPort(protocol === "ssh" ? "22" : "21");
+              if (STANDARD_PORTS.includes(port) || port === "1") {
+                setPort(DEFAULT_PORT[protocol] ?? "22");
+              }
               const ftp = isFileProtocol(protocol);
               const keep = credentials.find((c) => c.id === form.credentialId);
               update({
                 protocol,
                 // FTP logs in with a password only, and directly.
                 authMethod: ftp ? "password" : form.authMethod,
-                jumpHostId: ftp ? null : form.jumpHostId,
+                jumpHostId: protocol === "ssh" ? form.jumpHostId : null,
+                options: {
+                  serial:
+                    protocol === "serial" ? (form.options.serial ?? DEFAULT_SERIAL) : undefined,
+                  local: protocol === "local" ? (form.options.local ?? DEFAULT_LOCAL) : undefined,
+                },
                 credentialId: ftp && keep?.kind === "key" ? null : form.credentialId,
               });
             }}
@@ -228,45 +267,74 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_6rem] gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="se-host">Host</Label>
-          <Input
-            id="se-host"
-            placeholder="server.example.com"
-            value={form.host}
-            spellCheck={false}
-            onChange={(e) => {
-              update({ host: e.target.value });
-            }}
-          />
+      {isNetworkProtocol(form.protocol) && (
+        <div className="grid grid-cols-[1fr_6rem] gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="se-host">Host</Label>
+            <Input
+              id="se-host"
+              placeholder="server.example.com"
+              value={form.host}
+              spellCheck={false}
+              onChange={(e) => {
+                update({ host: e.target.value });
+              }}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="se-port">Port</Label>
+            <Input
+              id="se-port"
+              inputMode="numeric"
+              value={port}
+              onChange={(e) => {
+                setPort(e.target.value);
+              }}
+            />
+          </div>
         </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="se-port">Port</Label>
-          <Input
-            id="se-port"
-            inputMode="numeric"
-            value={port}
-            onChange={(e) => {
-              setPort(e.target.value);
-            }}
-          />
-        </div>
-      </div>
+      )}
+      {form.protocol === "serial" && (
+        <SerialFields
+          value={form.options.serial ?? DEFAULT_SERIAL}
+          onChange={(serial) => {
+            update({ options: { serial } });
+          }}
+        />
+      )}
+      {form.protocol === "local" && (
+        <LocalFields
+          value={form.options.local ?? DEFAULT_LOCAL}
+          onChange={(local) => {
+            update({ options: { local } });
+          }}
+        />
+      )}
+      {form.protocol === "telnet" && (
+        <p
+          role="note"
+          className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+        >
+          Telnet sends everything, including your password, unencrypted. You log in on the terminal
+          screen. Use it for switches and old devices on trusted networks; prefer SSH.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="se-user">Username</Label>
-          <Input
-            id="se-user"
-            placeholder="Ask when connecting"
-            value={form.username}
-            spellCheck={false}
-            onChange={(e) => {
-              update({ username: e.target.value });
-            }}
-          />
-        </div>
+        {hasLogin(form.protocol) && (
+          <div className="grid gap-1.5">
+            <Label htmlFor="se-user">Username</Label>
+            <Input
+              id="se-user"
+              placeholder="Ask when connecting"
+              value={form.username}
+              spellCheck={false}
+              onChange={(e) => {
+                update({ username: e.target.value });
+              }}
+            />
+          </div>
+        )}
         <div className="grid gap-1.5">
           <Label htmlFor="se-folder">Folder</Label>
           <select
@@ -287,82 +355,84 @@ function EditorForm({ target, saving, setSaving, onDone }: EditorFormProps) {
         </div>
       </div>
 
-      <fieldset className="grid gap-2 rounded-md border p-3">
-        <legend className="px-1 text-sm font-medium">Login</legend>
-        <div className="grid grid-cols-2 gap-3">
-          {isFileProtocol(form.protocol) ? (
-            <div className="grid gap-1.5">
-              <Label>Method</Label>
-              <p className="text-muted-foreground flex h-9 items-center text-sm">Password</p>
-            </div>
-          ) : (
-            <div className="grid gap-1.5">
-              <Label htmlFor="se-auth">Method</Label>
-              <select
-                id="se-auth"
-                className={selectClass}
-                value={form.authMethod}
-                onChange={(e) => {
-                  const authMethod = e.target.value as AuthMethod;
-                  // A credential of the wrong kind doesn't apply to the new method.
-                  const keep = credentials.find((c) => c.id === form.credentialId);
-                  const fits = keep !== undefined && keep.kind === CREDENTIAL_KIND[authMethod];
-                  update({ authMethod, credentialId: fits ? form.credentialId : null });
-                }}
-              >
-                <option value="password">Password</option>
-                <option value="publickey">Private key</option>
-                <option value="agent">SSH agent (OpenSSH / Pageant)</option>
-                <option value="keyboard-interactive">Keyboard-interactive (2FA)</option>
-              </select>
-            </div>
+      {hasLogin(form.protocol) && (
+        <fieldset className="grid gap-2 rounded-md border p-3">
+          <legend className="px-1 text-sm font-medium">Login</legend>
+          <div className="grid grid-cols-2 gap-3">
+            {isFileProtocol(form.protocol) ? (
+              <div className="grid gap-1.5">
+                <Label>Method</Label>
+                <p className="text-muted-foreground flex h-9 items-center text-sm">Password</p>
+              </div>
+            ) : (
+              <div className="grid gap-1.5">
+                <Label htmlFor="se-auth">Method</Label>
+                <select
+                  id="se-auth"
+                  className={selectClass}
+                  value={form.authMethod}
+                  onChange={(e) => {
+                    const authMethod = e.target.value as AuthMethod;
+                    // A credential of the wrong kind doesn't apply to the new method.
+                    const keep = credentials.find((c) => c.id === form.credentialId);
+                    const fits = keep !== undefined && keep.kind === CREDENTIAL_KIND[authMethod];
+                    update({ authMethod, credentialId: fits ? form.credentialId : null });
+                  }}
+                >
+                  <option value="password">Password</option>
+                  <option value="publickey">Private key</option>
+                  <option value="agent">SSH agent (OpenSSH / Pageant)</option>
+                  <option value="keyboard-interactive">Keyboard-interactive (2FA)</option>
+                </select>
+              </div>
+            )}
+            {form.authMethod !== "agent" && (
+              <div className="grid gap-1.5">
+                <Label htmlFor="se-cred">Saved credential</Label>
+                <select
+                  id="se-cred"
+                  className={selectClass}
+                  value={form.credentialId ?? ""}
+                  onChange={(e) => {
+                    update({ credentialId: e.target.value || null });
+                  }}
+                >
+                  <option value="">
+                    {form.authMethod === "publickey"
+                      ? "(folder default)"
+                      : "(folder default, or ask)"}
+                  </option>
+                  {credentials
+                    .filter((c) => c.kind === CREDENTIAL_KIND[form.authMethod])
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                        {c.username ? ` (${c.username})` : ""}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+          </div>
+          {form.protocol === "ftp" && (
+            <p
+              role="note"
+              className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+            >
+              Plain FTP sends the password and files unencrypted. Use it only on trusted networks;
+              prefer SFTP or FTPS.
+            </p>
           )}
-          {form.authMethod !== "agent" && (
-            <div className="grid gap-1.5">
-              <Label htmlFor="se-cred">Saved credential</Label>
-              <select
-                id="se-cred"
-                className={selectClass}
-                value={form.credentialId ?? ""}
-                onChange={(e) => {
-                  update({ credentialId: e.target.value || null });
-                }}
-              >
-                <option value="">
-                  {form.authMethod === "publickey"
-                    ? "(folder default)"
-                    : "(folder default, or ask)"}
-                </option>
-                {credentials
-                  .filter((c) => c.kind === CREDENTIAL_KIND[form.authMethod])
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {c.username ? ` (${c.username})` : ""}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          )}
-        </div>
-        {form.protocol === "ftp" && (
-          <p
-            role="note"
-            className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
-          >
-            Plain FTP sends the password and files unencrypted. Use it only on trusted networks;
-            prefer SFTP or FTPS.
+          <p className="text-muted-foreground text-xs">
+            {AUTH_HINT[form.authMethod]}{" "}
+            <button type="button" className="text-brand hover:underline" onClick={openCredentials}>
+              {vaultStatus?.initialized === false
+                ? "Set up the vault to save passwords and keys."
+                : "Manage credentials…"}
+            </button>
           </p>
-        )}
-        <p className="text-muted-foreground text-xs">
-          {AUTH_HINT[form.authMethod]}{" "}
-          <button type="button" className="text-brand hover:underline" onClick={openCredentials}>
-            {vaultStatus?.initialized === false
-              ? "Set up the vault to save passwords and keys."
-              : "Manage credentials…"}
-          </button>
-        </p>
-      </fieldset>
+        </fieldset>
+      )}
 
       {form.protocol === "ssh" && (
         <JumpHostField
