@@ -188,6 +188,7 @@ fn jump_chain(
                 auth_method: "password".into(),
                 key_path: None,
                 jump: Vec::new(),
+                options: Default::default(),
             },
             Some(folder),
             prev.clone(),
@@ -226,6 +227,7 @@ fn session_input(
         favorite: false,
         resource_monitor: true,
         jump_host_id,
+        options: s.options.clone(),
         tags: vec!["imported".into()],
     }
 }
@@ -245,6 +247,7 @@ mod tests {
             username: "deploy".into(),
             auth_method: "password".into(),
             key_path: None,
+            options: Default::default(),
             jump: jump
                 .iter()
                 .map(|h| ImportedHop {

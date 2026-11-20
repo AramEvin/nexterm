@@ -574,6 +574,7 @@ mod tests {
                 favorite: false,
                 resource_monitor: true,
                 jump_host_id: None,
+                options: Default::default(),
                 tags: vec![],
             };
             let sess = sessions::create(c, &input)?;

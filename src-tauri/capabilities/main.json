@@ -25,6 +25,8 @@
     "allow-ssh-resize",
     "allow-ssh-monitor-start",
     "allow-import-preview",
+    "allow-local-open",
+    "allow-local-shells",
     "allow-import-apply",
     "allow-ssh-monitor-stop",
     "allow-ssh-disconnect",

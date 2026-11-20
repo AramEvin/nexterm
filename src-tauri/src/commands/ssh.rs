@@ -5,7 +5,11 @@
 //! changes, and prompts (host-key decisions, 2FA codes) that the UI answers
 //! with `ssh_prompt_respond`.
 
+use crate::local::LocalProtocol;
+use crate::serial::SerialProtocol;
 use crate::session::monitor::{MonitorSink, ResourceEvent};
+use crate::session::options::{LocalOptions, SerialOptions};
+use crate::telnet::{TelnetParams, TelnetProtocol};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -76,6 +80,24 @@ pub struct SshConnectSavedRequest {
     pub password: Option<SecretString>,
     pub cols: u16,
     pub rows: u16,
+}
+
+/// Open an unsaved local terminal.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalOpenRequest {
+    pub options: LocalOptions,
+    pub cols: u16,
+    pub rows: u16,
+}
+
+/// A shell the local-terminal menu can offer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalShellInfo {
+    pub shell: crate::session::options::LocalShell,
+    pub label: &'static str,
+    pub available: bool,
 }
 
 /// Bridges the protocol-agnostic `OutputSink` to Tauri IPC channels.
@@ -185,6 +207,9 @@ pub(crate) async fn resolve(
             username,
             password,
         } => (session_id, username, password),
+        ConnectSpec::Local { .. } => {
+            return Err(AppError::Validation("Not an SSH session.".into()));
+        }
     };
     let db = lib.db()?;
     let vault = vault.0.clone();
@@ -194,6 +219,9 @@ pub(crate) async fn resolve(
             return Err(AppError::Validation(
                 "This is an FTP session: open it in the file manager.".into(),
             ));
+        }
+        if session.protocol != ProtocolKind::Ssh {
+            return Err(AppError::Validation("Not an SSH session.".into()));
         }
         let mut next_jump = session.jump_host_id.clone();
         let mut target = resolve_one(c, vault.as_deref(), session, typed_user, typed_password)?;
@@ -323,6 +351,24 @@ async fn open_spec(
     deps: &Deps<'_>,
 ) -> AppResult<Uuid> {
     let size = validate::terminal_size(cols, rows)?;
+    let sink: Arc<dyn OutputSink> = Arc::new(ChannelSink {
+        output: channels.output.clone(),
+        status: channels.status.clone(),
+    });
+    // Telnet, serial and local terminals: no login or host keys in Rust.
+    if let Some((other, saved_id)) = other_protocol(&spec, deps.lib).await? {
+        let handle = match other {
+            Other::Telnet(p) => TelnetProtocol::open(p, size, Arc::clone(&sink)).await?,
+            Other::Serial(o) => SerialProtocol::open(o, size, Arc::clone(&sink)).await?,
+            Other::Local(o) => LocalProtocol::open(o, size, Arc::clone(&sink)).await?,
+        };
+        let id = deps.manager.register(handle, sink).await;
+        tracing::info!(session_id = %id, "session registered");
+        if let (Some(sid), Ok(db)) = (saved_id, deps.lib.db()) {
+            let _ = db.run(move |c| sessions::mark_connected(c, &sid)).await;
+        }
+        return Ok(id);
+    }
     let resolved = resolve(spec, deps.lib, deps.vault).await?;
     let interaction = Interaction {
         broker: Arc::clone(&deps.ctx.broker),
@@ -333,10 +379,6 @@ async fn open_spec(
     };
     let saved_id = resolved.saved_session_id.clone();
     let params = resolved.into_params(interaction);
-    let sink: Arc<dyn OutputSink> = Arc::new(ChannelSink {
-        output: channels.output,
-        status: channels.status,
-    });
     let handle = SshProtocol::open(params, size, Arc::clone(&sink)).await?;
     let id = deps.manager.register(handle, sink).await;
     tracing::info!(session_id = %id, "session registered");
@@ -345,6 +387,48 @@ async fn open_spec(
         let _ = db.run(move |c| sessions::mark_connected(c, &sid)).await;
     }
     Ok(id)
+}
+
+/// A non-SSH terminal target.
+enum Other {
+    Telnet(TelnetParams),
+    Serial(SerialOptions),
+    Local(LocalOptions),
+}
+
+/// `Some` when the spec opens a Telnet, serial or local terminal (with the
+/// saved session id, if any); `None` for SSH.
+async fn other_protocol(
+    spec: &ConnectSpec,
+    lib: &LibraryDb,
+) -> AppResult<Option<(Other, Option<String>)>> {
+    let session_id = match spec {
+        ConnectSpec::Direct { .. } => return Ok(None),
+        ConnectSpec::Local { options } => {
+            return Ok(Some((Other::Local(options.validated()?), None)));
+        }
+        ConnectSpec::Saved { session_id, .. } => session_id.clone(),
+    };
+    let db = lib.db()?;
+    db.run(move |c| {
+        let s = sessions::get(c, &session_id)?;
+        let other =
+            match s.protocol {
+                ProtocolKind::Telnet => Other::Telnet(TelnetParams {
+                    host: s.host,
+                    port: s.port,
+                }),
+                ProtocolKind::Serial => Other::Serial(s.options.serial.ok_or_else(|| {
+                    AppError::Validation("This session has no serial port set.".into())
+                })?),
+                ProtocolKind::Local => Other::Local(s.options.local.ok_or_else(|| {
+                    AppError::Validation("This session has no shell set.".into())
+                })?),
+                ProtocolKind::Ssh | ProtocolKind::Ftp | ProtocolKind::Ftps => return Ok(None),
+            };
+        Ok(Some((other, Some(s.id))))
+    })
+    .await
 }
 
 /// Managed state every connect command needs.
@@ -465,6 +549,74 @@ pub async fn ssh_connect_saved(
         &connections,
     )
     .await
+}
+
+/// Open a local terminal (PowerShell, CMD, WSL, or the login shell) that
+/// isn't a saved session. Reconnect/duplicate work like for SSH tabs.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn local_open(
+    request: LocalOpenRequest,
+    on_output: Channel<Response>,
+    on_status: Channel<SessionStatus>,
+    on_prompt: Channel<SshPrompt>,
+    manager: State<'_, Arc<SessionManager>>,
+    connections: State<'_, SshConnections>,
+    lib: State<'_, LibraryDb>,
+    vault: State<'_, VaultState>,
+    ctx: State<'_, SshContext>,
+) -> AppResult<SshSessionInfo> {
+    let spec = ConnectSpec::Local {
+        options: request.options.validated()?,
+    };
+    let channels = Channels {
+        output: on_output,
+        status: on_status,
+        prompts: on_prompt,
+    };
+    let deps = Deps {
+        manager: &manager,
+        lib: &lib,
+        vault: &vault,
+        ctx: &ctx,
+    };
+    open_and_remember(
+        spec,
+        request.cols,
+        request.rows,
+        channels,
+        &deps,
+        &connections,
+    )
+    .await
+}
+
+/// Shells for the local-terminal menu, the platform default first.
+#[tauri::command]
+pub fn local_shells() -> Vec<LocalShellInfo> {
+    use crate::session::options::LocalShell;
+    let candidates: &[LocalShell] = if cfg!(windows) {
+        &[
+            LocalShell::Powershell,
+            LocalShell::Pwsh,
+            LocalShell::Cmd,
+            LocalShell::Wsl,
+        ]
+    } else {
+        &[LocalShell::Default]
+    };
+    candidates
+        .iter()
+        .map(|&shell| LocalShellInfo {
+            shell,
+            label: shell.label(),
+            available: crate::local::command(&LocalOptions {
+                shell,
+                wsl_distro: String::new(),
+            })
+            .is_ok(),
+        })
+        .collect()
 }
 
 /// Open a new session for an existing tab, reusing its remembered spec.

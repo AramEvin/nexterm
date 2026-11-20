@@ -6,7 +6,9 @@
 //! - `Saved`: a saved session. Only the session id (plus anything the user had
 //!   to type) is kept; host, credentials and auth method are re-read from the
 //!   database and the vault on every (re)connect, so a locked vault or an
-//!   edited session takes effect immediately.
+//!   edited session takes effect immediately. Telnet, serial and local
+//!   sessions go through the same path (Phase 8).
+//! - `Local`: an unsaved local terminal (just the shell choice).
 
 use std::collections::HashMap;
 
@@ -16,6 +18,7 @@ use uuid::Uuid;
 
 use super::SshAuth;
 use crate::error::{AppError, AppResult};
+use crate::session::options::LocalOptions;
 
 /// Upper bound on remembered connections (one per open tab).
 pub const MAX_CONNECTIONS: usize = 256;
@@ -34,6 +37,8 @@ pub enum ConnectSpec {
         /// Typed at connect time because no credential was linked.
         password: Option<SecretString>,
     },
+    /// A local terminal that isn't a saved session.
+    Local { options: LocalOptions },
 }
 
 impl ConnectSpec {
@@ -61,6 +66,9 @@ impl ConnectSpec {
                 password: password
                     .as_ref()
                     .map(|p| SecretString::from(p.expose_secret().to_owned())),
+            },
+            Self::Local { options } => Self::Local {
+                options: options.clone(),
             },
         }
     }

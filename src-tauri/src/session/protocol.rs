@@ -29,12 +29,23 @@ pub enum ProtocolKind {
     Ftp,
     /// FTP with explicit TLS (AUTH TLS). File manager only.
     Ftps,
+    /// Telnet (unencrypted; the UI shows a warning badge).
+    Telnet,
+    /// A serial line (COM port).
+    Serial,
+    /// A shell on this computer (PowerShell, CMD, WSL, …).
+    Local,
 }
 
 impl ProtocolKind {
     /// Opens in the file manager instead of a terminal.
     pub fn is_file_only(self) -> bool {
         matches!(self, Self::Ftp | Self::Ftps)
+    }
+
+    /// Uses host and port (as opposed to a COM port or a local shell).
+    pub fn is_network(self) -> bool {
+        !matches!(self, Self::Serial | Self::Local)
     }
 }
 

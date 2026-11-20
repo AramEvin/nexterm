@@ -174,6 +174,11 @@ async fn resolve_ftp(
             ProtocolKind::Ftp => false,
             ProtocolKind::Ftps => true,
             ProtocolKind::Ssh => return Ok(None),
+            ProtocolKind::Telnet | ProtocolKind::Serial | ProtocolKind::Local => {
+                return Err(AppError::Validation(
+                    "Only SSH and FTP sessions open in the file manager.".into(),
+                ));
+            }
         };
         let credential = match credentials::resolve_for_session(c, &session.id)? {
             Some(cid) => {

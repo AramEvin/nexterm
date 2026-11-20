@@ -12,6 +12,7 @@ pub mod putty;
 
 use serde::{Deserialize, Serialize};
 
+use crate::session::options::SessionOptions;
 use crate::session::protocol::ProtocolKind;
 use crate::ssh::validate;
 
@@ -61,6 +62,9 @@ pub struct ImportedSession {
     pub key_path: Option<String>,
     /// Jump hosts, dialled first to last (the last one reaches the target).
     pub jump: Vec<ImportedHop>,
+    /// Serial line settings (protocol `serial`).
+    #[serde(default)]
+    pub options: SessionOptions,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -107,12 +111,32 @@ impl ImportPreview {
         if s.name.is_empty() {
             s.name = s.host.clone();
         }
-        match validate::host(&s.host) {
-            Ok(h) => s.host = h,
-            Err(_) => return self.skip(&s.name, "The host name isn't valid."),
-        }
-        if s.port == 0 {
-            return self.skip(&s.name, "The port isn't valid.");
+        if s.protocol == ProtocolKind::Serial {
+            match s
+                .options
+                .serial
+                .as_ref()
+                .map(crate::session::options::SerialOptions::validated)
+            {
+                Some(Ok(serial)) => {
+                    s.host.clone_from(&serial.port);
+                    s.port = 1;
+                    s.options = SessionOptions {
+                        serial: Some(serial),
+                        local: None,
+                    };
+                }
+                _ => return self.skip(&s.name, "The serial port settings aren't valid."),
+            }
+        } else {
+            match validate::host(&s.host) {
+                Ok(h) => s.host = h,
+                Err(_) => return self.skip(&s.name, "The host name isn't valid."),
+            }
+            if s.port == 0 {
+                return self.skip(&s.name, "The port isn't valid.");
+            }
+            s.options = SessionOptions::default();
         }
         if !s.username.is_empty() && validate::username(&s.username).is_err() {
             s.username.clear(); // asked at connect time instead

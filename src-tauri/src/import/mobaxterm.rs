@@ -111,6 +111,7 @@ fn session_line(out: &mut ImportPreview, name: &str, value: &str, folder: &[Stri
     let kind = f.first().copied().unwrap_or_default();
     let protocol = match kind {
         "0" | "7" => ProtocolKind::Ssh, // SFTP sessions open fine in the file manager
+        "1" => ProtocolKind::Telnet,
         "6" => ProtocolKind::Ftp,
         other => {
             return out.skip(
@@ -120,10 +121,10 @@ fn session_line(out: &mut ImportPreview, name: &str, value: &str, folder: &[Stri
         }
     };
     let host = unescape(f.get(1).copied().unwrap_or_default().trim());
-    let default_port = if protocol == ProtocolKind::Ftp {
-        21
-    } else {
-        22
+    let default_port = match protocol {
+        ProtocolKind::Ftp => 21,
+        ProtocolKind::Telnet => 23,
+        _ => 22,
     };
     let mut session = ImportedSession {
         name: name.to_owned(),
@@ -135,7 +136,11 @@ fn session_line(out: &mut ImportPreview, name: &str, value: &str, folder: &[Stri
         auth_method: "password".into(),
         key_path: None,
         jump: Vec::new(),
+        options: Default::default(),
     };
+    if protocol == ProtocolKind::Telnet {
+        session.username.clear(); // Telnet logs in on screen
+    }
     if kind == "0" {
         let key = unescape(f.get(14).copied().unwrap_or_default().trim());
         let agent = f.get(33).is_some_and(|v| v.trim() == "-1");

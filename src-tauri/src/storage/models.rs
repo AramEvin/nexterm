@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::session::options::SessionOptions;
 use crate::session::protocol::ProtocolKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -35,6 +36,8 @@ pub struct SavedSession {
     pub favorite: bool,
     /// Show the live CPU / RAM / disk bar under this session's terminals.
     pub resource_monitor: bool,
+    /// Serial line settings or local shell choice.
+    pub options: SessionOptions,
     pub tags: Vec<String>,
     pub sort_order: i64,
     pub created_at: i64,
@@ -71,6 +74,9 @@ pub struct SessionInput {
     /// Saved SSH session to connect through (ProxyJump); chainable.
     #[serde(default)]
     pub jump_host_id: Option<String>,
+    /// Serial settings (protocol `serial`) or shell (protocol `local`).
+    #[serde(default)]
+    pub options: SessionOptions,
     #[serde(default)]
     pub tags: Vec<String>,
 }

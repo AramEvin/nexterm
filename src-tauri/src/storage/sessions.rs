@@ -9,11 +9,12 @@ use super::folders::{self, reorder};
 use super::models::{SavedSession, SessionInput};
 use super::{now_ms, validate};
 use crate::error::{AppError, AppResult};
+use crate::session::options::SessionOptions;
 use crate::session::protocol::ProtocolKind;
 
 const SELECT_COLUMNS: &str = "id, folder_id, name, protocol, host, port, username, auth_method,
      credential_id, jump_host_id, color, notes, favorite, sort_order, created_at, updated_at,
-     last_connected_at, resource_monitor";
+     last_connected_at, resource_monitor, options";
 
 /// Validated `SessionInput`.
 struct Valid {
@@ -31,6 +32,7 @@ struct Valid {
     resource_monitor: bool,
     tags: Vec<String>,
     jump_host_id: Option<String>,
+    options: SessionOptions,
 }
 
 /// Longest jump chain (bastion → bastion → … → target).
@@ -89,16 +91,68 @@ fn validate_input(
         }
         check_jump_chain(conn, j, self_id)?;
     }
+    // Network protocols use host/port; a serial line or a local shell keeps
+    // its settings in `options` and a readable summary in `host`.
+    let (host, port, options) = match input.protocol {
+        ProtocolKind::Serial => {
+            let serial = input
+                .options
+                .serial
+                .as_ref()
+                .ok_or_else(|| AppError::Validation("Choose a serial port.".into()))?
+                .validated()?;
+            let host = serial.port.clone();
+            (
+                host,
+                1,
+                SessionOptions {
+                    serial: Some(serial),
+                    local: None,
+                },
+            )
+        }
+        ProtocolKind::Local => {
+            let local = input
+                .options
+                .local
+                .as_ref()
+                .ok_or_else(|| AppError::Validation("Choose a shell.".into()))?
+                .validated()?;
+            let host = local.summary();
+            (
+                host,
+                1,
+                SessionOptions {
+                    serial: None,
+                    local: Some(local),
+                },
+            )
+        }
+        _ => (
+            validate::host(&input.host)?,
+            validate::port(input.port)?,
+            SessionOptions::default(),
+        ),
+    };
+    let needs_login = matches!(
+        input.protocol,
+        ProtocolKind::Ssh | ProtocolKind::Ftp | ProtocolKind::Ftps
+    );
     Ok(Valid {
         folder_id,
         jump_host_id,
         name: validate::session_name(&input.name)?,
         protocol: input.protocol,
-        host: validate::host(&input.host)?,
-        port: validate::port(input.port)?,
-        username: validate::optional_username(&input.username)?,
+        host,
+        port,
+        options,
+        username: if needs_login {
+            validate::optional_username(&input.username)?
+        } else {
+            String::new()
+        },
         auth_method: validate::auth_method(&input.auth_method)?,
-        credential_id,
+        credential_id: if needs_login { credential_id } else { None },
         color: validate::color(input.color.as_deref())?,
         notes: validate::notes(&input.notes)?,
         favorite: input.favorite,
@@ -107,11 +161,18 @@ fn validate_input(
     })
 }
 
+fn options_json(o: &SessionOptions) -> AppResult<String> {
+    serde_json::to_string(o).map_err(|_| AppError::Internal("options".into()))
+}
+
 fn protocol_to_db(p: ProtocolKind) -> &'static str {
     match p {
         ProtocolKind::Ssh => "ssh",
         ProtocolKind::Ftp => "ftp",
         ProtocolKind::Ftps => "ftps",
+        ProtocolKind::Telnet => "telnet",
+        ProtocolKind::Serial => "serial",
+        ProtocolKind::Local => "local",
     }
 }
 
@@ -120,6 +181,9 @@ fn protocol_from_db(raw: &str) -> rusqlite::Result<ProtocolKind> {
         "ssh" => Ok(ProtocolKind::Ssh),
         "ftp" => Ok(ProtocolKind::Ftp),
         "ftps" => Ok(ProtocolKind::Ftps),
+        "telnet" => Ok(ProtocolKind::Telnet),
+        "serial" => Ok(ProtocolKind::Serial),
+        "local" => Ok(ProtocolKind::Local),
         other => Err(rusqlite::Error::FromSqlConversionFailure(
             3,
             rusqlite::types::Type::Text,
@@ -133,6 +197,9 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedSession> {
     let port: i64 = row.get("port")?;
     let favorite: i64 = row.get("favorite")?;
     let resource_monitor: i64 = row.get("resource_monitor")?;
+    let options: String = row.get("options")?;
+    // Unreadable options (hand-edited DB) fall back to none rather than failing the list.
+    let options: SessionOptions = serde_json::from_str(&options).unwrap_or_default();
     Ok(SavedSession {
         id: row.get("id")?,
         folder_id: row.get("folder_id")?,
@@ -148,6 +215,7 @@ fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedSession> {
         notes: row.get("notes")?,
         favorite: favorite != 0,
         resource_monitor: resource_monitor != 0,
+        options,
         tags: Vec::new(),
         sort_order: row.get("sort_order")?,
         created_at: row.get("created_at")?,
@@ -231,8 +299,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
     tx.execute(
         "INSERT INTO sessions (id, folder_id, name, protocol, host, port, username, auth_method,
                                credential_id, color, notes, favorite, sort_order, created_at,
-                               updated_at, resource_monitor, jump_host_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16)",
+                               updated_at, resource_monitor, jump_host_id, options)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15, ?16, ?17)",
         params![
             id,
             v.folder_id,
@@ -249,7 +317,8 @@ pub fn create(conn: &mut Connection, input: &SessionInput) -> AppResult<SavedSes
             order,
             now,
             v.resource_monitor,
-            v.jump_host_id
+            v.jump_host_id,
+            options_json(&v.options)?
         ],
     )?;
     write_tags(&tx, &id, &v.tags)?;
@@ -270,7 +339,7 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
         "UPDATE sessions SET folder_id = ?2, name = ?3, protocol = ?4, host = ?5, port = ?6,
                 username = ?7, auth_method = ?8, credential_id = ?9, color = ?10, notes = ?11,
                 favorite = ?12, sort_order = ?13, updated_at = ?14, resource_monitor = ?15,
-                jump_host_id = ?16
+                jump_host_id = ?16, options = ?17
          WHERE id = ?1",
         params![
             existing.id,
@@ -288,7 +357,8 @@ pub fn update(conn: &mut Connection, id: &str, input: &SessionInput) -> AppResul
             order,
             now_ms(),
             v.resource_monitor,
-            v.jump_host_id
+            v.jump_host_id,
+            options_json(&v.options)?
         ],
     )?;
     write_tags(&tx, &existing.id, &v.tags)?;
@@ -325,6 +395,7 @@ pub fn duplicate(conn: &mut Connection, id: &str) -> AppResult<SavedSession> {
         favorite: false,
         resource_monitor: src.resource_monitor,
         jump_host_id: src.jump_host_id.clone(),
+        options: src.options.clone(),
         tags: src.tags.clone(),
     };
     let copy = create(conn, &input)?;
@@ -413,6 +484,7 @@ mod tests {
             favorite: false,
             resource_monitor: true,
             jump_host_id: None,
+            options: Default::default(),
             tags: vec!["prod".into(), "db".into()],
         }
     }

@@ -10,12 +10,15 @@
 pub mod commands;
 pub mod error;
 pub mod import;
+pub mod local;
 pub mod logging;
+pub mod serial;
 pub mod session;
 pub mod settings;
 pub mod sftp;
 pub mod ssh;
 pub mod storage;
+pub mod telnet;
 pub mod vault;
 
 use std::sync::Arc;
@@ -106,6 +109,8 @@ pub fn run() -> anyhow::Result<()> {
             commands::ssh::ssh_resize,
             commands::ssh::ssh_monitor_start,
             commands::import::import_preview,
+            commands::ssh::local_open,
+            commands::ssh::local_shells,
             commands::import::import_apply,
             commands::ssh::ssh_monitor_stop,
             commands::ssh::ssh_disconnect,
