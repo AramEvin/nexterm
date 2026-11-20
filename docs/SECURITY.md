@@ -301,6 +301,23 @@ B); no credentials are forwarded to either server.
   copied into the notes as text and never opened.
 - PuTTY's registry is only read (`HKCU\Software\SimonTatham\PuTTY\Sessions`), never written.
 
+## 6d. Telnet, serial and local terminals (implemented in Phase 8)
+
+- **Telnet** is unencrypted by design and labelled so everywhere (tab badge, status bar, session
+  list, editor warning). NexTerm's own client (no crate) agrees only to ECHO, SGA, TTYPE, NAWS and
+  BINARY and refuses every other option; subnegotiations are capped at 1 KiB. NexTerm never
+  stores or sends a Telnet password itself: the login happens on screen.
+- **Serial**: port names are validated (`COM1`–`COM256`, `/dev/tty*`, `/dev/cu.*`, `/dev/pts/*`;
+  no `..`, no other paths) and line settings range-checked before opening.
+- **Local terminals** run through ConPTY (`portable-pty`). Each shell maps to a **fixed path**:
+  `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`, `System32\cmd.exe`,
+  `System32\wsl.exe`, `%ProgramFiles%\PowerShell\7\pwsh.exe`; elsewhere an absolute `$SHELL`.
+  Nothing is resolved through `PATH` or the working directory, and the UI only sends an enum
+  (plus a WSL distribution name limited to `[A-Za-z0-9._-]`), so no session or IPC call can start
+  another program. The shell starts in the user's home folder with the user's own rights.
+- Protocol settings live in `sessions.options` as typed JSON (`deny_unknown_fields`), validated on
+  save and again on connect.
+
 ## 7. Logging policy (implemented in Phase 0)
 
 - Location `%APPDATA%\NexTerm\logs`, daily rotation, 14 files retained.

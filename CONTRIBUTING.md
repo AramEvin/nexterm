@@ -70,6 +70,9 @@ NEXTERM_TEST_FTP_USER=ftest NEXTERM_TEST_FTP_PASSWORD=Ftp-Pass-123 \
   cargo test --test ftp_integration -- --ignored --test-threads=1
 ```
 
+Telnet (fake in-process server) and local-shell tests run with plain `cargo test`. The serial
+test uses a `socat` pseudo-terminal pair: `cargo test --test terminals -- --include-ignored`.
+
 The passwords above belong to throw-away test servers only.
 
 ## Pull requests

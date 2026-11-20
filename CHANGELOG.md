@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-20 — Phase 8: Telnet, serial and local terminals
+
+### Added
+
+- Telnet sessions (port 23) for switches and older devices: NexTerm's own client negotiates
+  echo, terminal type (xterm-256color) and window size (updated on resize); you log in on the
+  screen. Marked "Unencrypted" on the tab, in the status bar, in the session list and in the editor.
+- Serial sessions for console cables: COM port (or `/dev/tty*`), speed, data bits, parity, stop
+  bits and flow control (none, XON/XOFF, RTS/CTS). An unplugged adapter shows "disconnected"
+  with Reconnect.
+- Local terminals: Windows PowerShell, PowerShell 7, Command Prompt or WSL (with an optional
+  distribution) in a tab, via ConPTY. Open one from the tab bar, Home, or Ctrl+Shift+T (first
+  available shell), or save one as a session. They split, duplicate and restart like other tabs.
+- The session editor shows the fields each protocol needs (host/port, serial line, or shell) and
+  hides login options where they don't apply. RDP and VNC are listed for a later version.
+- Import: PuTTY Telnet and serial sessions (with their line settings) and MobaXterm Telnet
+  sessions are now imported instead of skipped.
+
+### Changed
+
+- CI pins Rust 1.100.0 (`rust-toolchain.toml`, workflows) so a new Rust release can't break CI
+  overnight (#6). The integration job also runs the Telnet, local-shell and serial tests.
+- The file manager's location list only offers SSH and FTP sessions; the SFTP side panel and the
+  resource bar only appear on SSH tabs.
+
 ## [0.8.0] - 2026-11-20 — Phase 7: jump hosts and import from MobaXterm / PuTTY
 
 ### Added

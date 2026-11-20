@@ -4,7 +4,7 @@
 
 # NexTerm
 
-**A security-first, open-source SSH, SFTP and FTP client for Windows.**<br />
+**A security-first, open-source terminal for Windows: SSH, Telnet, serial, local shells, SFTP and FTP.**<br />
 A modern alternative to MobaXterm: tabs, a session library, an encrypted credential vault
 and a WinSCP-style file manager, in one fast native app.
 
@@ -60,6 +60,10 @@ and a WinSCP-style file manager, in one fast native app.
   split panes and SFTP
 - **Import from MobaXterm and PuTTY**: `.mxtsessions` / `MobaXterm.ini`, PuTTY's registry on this
   PC, or a PuTTY `.reg` export. Folders and gateways come along; passwords never do
+- **Telnet** for switches and older devices (clearly marked unencrypted), **serial / COM ports**
+  for console cables (speed, data bits, parity, stop bits, flow control), and **local terminals**:
+  PowerShell, PowerShell 7, Command Prompt or WSL, in tabs and split panes like everything else
+  (Ctrl+Shift+T)
 - Session library: nested folders, tags, colours, notes, favourites, drag & drop, and
   instant search (`tag:prod`)
 - Reconnect and duplicate tabs without retyping the password
@@ -104,6 +108,8 @@ and a WinSCP-style file manager, in one fast native app.
 | Typing into the wrong servers   | Multi-exec needs an explicit choice of terminals; members are outlined in orange with a banner to stop      |
 | A compromised jump host         | Every hop's host key is verified separately; the jump host only relays encrypted SSH it can't read          |
 | Malicious import files          | Parsed as untrusted data (size-capped, every field validated); passwords in them are never read             |
+| Starting the wrong program      | Local terminals run fixed system paths (System32 PowerShell/CMD/WSL), never a name from PATH or the UI      |
+| Telnet's clear text             | Telnet is marked "Unencrypted" on the tab, in the status bar and the session list                           |
 | Compromised web UI              | Strict CSP, deny-by-default IPC permissions, no shell plugin; every command is validated in Rust            |
 | Supply chain                    | `cargo audit` and `npm audit` in CI, Dependabot, CodeQL, OpenSSF Scorecard, release build provenance        |
 
@@ -117,6 +123,10 @@ and a WinSCP-style file manager, in one fast native app.
 | Import from MobaXterm                                                         | Jump host route                                                          |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | ![Import preview with folders and gateways](docs/images/import-mobaxterm.png) | ![Session editor showing the jump-host route](docs/images/jump-host.png) |
+
+| Telnet to a switch                                            | Serial console                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| ![Telnet session, marked unencrypted](docs/images/telnet.png) | ![Router console over a serial line](docs/images/serial-console.png) |
 
 </details>
 
@@ -178,8 +188,8 @@ decision records: [docs/adr/](docs/adr/)
 | 0.6     | File manager: SFTP, FTP/FTPS, server-to-server, side panel, editing  | ✅ Done |
 | 0.7     | Split panes, live CPU/RAM/disk bar, multi-exec, paste safety check   | ✅ Done |
 | 0.8     | Jump hosts (ProxyJump), import from MobaXterm and PuTTY              | ✅ Done |
-| 0.9     | Telnet, serial (COM), local PowerShell / CMD / WSL                   | 🔜 Next |
-| 0.10    | VNC and RDP                                                          |         |
+| 0.9     | Telnet, serial (COM), local PowerShell / CMD / WSL                   | ✅ Done |
+| 0.10    | VNC and RDP                                                          | 🔜 Next |
 | 1.0     | Settings and themes, command palette, signed installers, auto-update |         |
 
 Details: [docs/ROADMAP.md](docs/ROADMAP.md) · release notes: [CHANGELOG.md](CHANGELOG.md)
