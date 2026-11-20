@@ -1,3 +1,6 @@
 [toolchain]
-channel = "stable"
+# Pinned on purpose: a floating "stable" let every new Rust release add clippy lints that fail CI
+# overnight (e.g. clippy::chunks_exact_to_as_chunks in 1.100). Bump deliberately in its own PR:
+# change this line and the `toolchain:` lines in .github/workflows/ci.yml and release.yml, then fix any new lints.
+channel = "1.100.0"
 components = ["rustfmt", "clippy"]

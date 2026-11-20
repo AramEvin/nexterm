@@ -60,7 +60,7 @@ jobs:
           node-version: lts/*
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
-          toolchain: stable
+          toolchain: 1.100.0 # keep in sync with src-tauri/rust-toolchain.toml
 
       # No build cache in release builds (cache poisoning can't reach a release).
       - run: npm ci
