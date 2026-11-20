@@ -8,8 +8,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nexterm_lib::session::options::LocalOptions;
-use nexterm_lib::session::options::LocalShell;
 use nexterm_lib::session::protocol::{
     OutputSink, SessionCommand, SessionStatus, TerminalProtocol, TerminalSize,
 };
@@ -174,6 +172,7 @@ async fn telnet_refused_connection_is_a_clear_error() {
 #[tokio::test]
 async fn local_shell_runs_in_a_pty_and_reports_exit() {
     use nexterm_lib::local::LocalProtocol;
+    use nexterm_lib::session::options::{LocalOptions, LocalShell};
     let sink = Arc::new(CollectSink::default());
     let handle = LocalProtocol::open(
         LocalOptions {
