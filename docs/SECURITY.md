@@ -276,6 +276,31 @@ B); no credentials are forwarded to either server.
   end marker (`ESC[201~`) can't break out of bracketed paste and run commands.
 - "Don't run the last line" (default on) removes the final line break.
 
+## 6c. Jump hosts and session import (implemented in Phase 7)
+
+### Jump hosts (ProxyJump)
+
+- A saved SSH session may name another saved SSH session as its jump host
+  (`sessions.jump_host_id`). The chain is resolved **in Rust** from the database and vault on every
+  connect: the UI never handles a jump host's credentials.
+- Each hop is a full SSH connection with its **own host-key verification** (TOFU / changed-key
+  block) and login. The next hop runs over a `direct-tcpip` channel, end-to-end encrypted to the
+  target: a jump host relays bytes it cannot read, and a malicious one can't impersonate the
+  target without its host key.
+- Saving refuses loops, non-SSH hops and chains over 5 hops; connecting checks again. A jump host
+  must have its own saved credential or use the agent (it never borrows the target's login).
+- Logs record host, port, user and method per hop (`via_jump`), never secrets.
+
+### Import from MobaXterm / PuTTY
+
+- The file is picked through a native dialog opened from Rust; the UI only sees the parsed preview.
+  Files over 8 MB and imports over 5,000 sessions are refused.
+- Parsers treat the file as untrusted: unknown lines are ignored, every host, port, user, name and
+  folder goes through the editor's validators, and malformed entries are listed as skipped.
+- MobaXterm's `[Passwords]` section is never read; PuTTY stores no passwords. Private-key paths are
+  copied into the notes as text and never opened.
+- PuTTY's registry is only read (`HKCU\Software\SimonTatham\PuTTY\Sessions`), never written.
+
 ## 7. Logging policy (implemented in Phase 0)
 
 - Location `%APPDATA%\NexTerm\logs`, daily rotation, 14 files retained.

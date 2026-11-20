@@ -55,6 +55,11 @@ and a WinSCP-style file manager, in one fast native app.
   an orange border and a banner while it's on
 - **Paste safety check**: multi-line, large or suspicious pastes are shown first, with
   warnings for `sudo`, `rm -rf`, `curl | sh` and hidden control characters
+- **Jump hosts (ProxyJump)**: reach servers behind a bastion; pick any saved SSH session as the
+  jump host, chain up to 5, each hop with its own login and host-key check. Works for terminals,
+  split panes and SFTP
+- **Import from MobaXterm and PuTTY**: `.mxtsessions` / `MobaXterm.ini`, PuTTY's registry on this
+  PC, or a PuTTY `.reg` export. Folders and gateways come along; passwords never do
 - Session library: nested folders, tags, colours, notes, favourites, drag & drop, and
   instant search (`tag:prod`)
 - Reconnect and duplicate tabs without retyping the password
@@ -97,6 +102,8 @@ and a WinSCP-style file manager, in one fast native app.
 | FTP command injection           | Paths, user names and passwords containing CR/LF are refused                                                |
 | Malicious clipboard content     | Multi-line or suspicious pastes are reviewed first; hidden control characters are stripped                  |
 | Typing into the wrong servers   | Multi-exec needs an explicit choice of terminals; members are outlined in orange with a banner to stop      |
+| A compromised jump host         | Every hop's host key is verified separately; the jump host only relays encrypted SSH it can't read          |
+| Malicious import files          | Parsed as untrusted data (size-capped, every field validated); passwords in them are never read             |
 | Compromised web UI              | Strict CSP, deny-by-default IPC permissions, no shell plugin; every command is validated in Rust            |
 | Supply chain                    | `cargo audit` and `npm audit` in CI, Dependabot, CodeQL, OpenSSF Scorecard, release build provenance        |
 
@@ -106,6 +113,10 @@ and a WinSCP-style file manager, in one fast native app.
 ![FTPS certificate fingerprint prompt](docs/images/ftps-certificate.png)
 
 ![Paste safety check catching a hidden control character](docs/images/paste-check.png)
+
+| Import from MobaXterm                                                         | Jump host route                                                          |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| ![Import preview with folders and gateways](docs/images/import-mobaxterm.png) | ![Session editor showing the jump-host route](docs/images/jump-host.png) |
 
 </details>
 
@@ -166,8 +177,8 @@ decision records: [docs/adr/](docs/adr/)
 | 0.1–0.5 | Terminal, tabs, session library, vault, key/agent/2FA login          | ✅ Done |
 | 0.6     | File manager: SFTP, FTP/FTPS, server-to-server, side panel, editing  | ✅ Done |
 | 0.7     | Split panes, live CPU/RAM/disk bar, multi-exec, paste safety check   | ✅ Done |
-| 0.8     | Jump hosts (ProxyJump), import from MobaXterm and PuTTY              | 🔜 Next |
-| 0.9     | Telnet, serial (COM), local PowerShell / CMD / WSL                   |         |
+| 0.8     | Jump hosts (ProxyJump), import from MobaXterm and PuTTY              | ✅ Done |
+| 0.9     | Telnet, serial (COM), local PowerShell / CMD / WSL                   | 🔜 Next |
 | 0.10    | VNC and RDP                                                          |         |
 | 1.0     | Settings and themes, command palette, signed installers, auto-update |         |
 

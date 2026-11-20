@@ -5,6 +5,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning: [S
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20 — Phase 7: jump hosts and import from MobaXterm / PuTTY
+
+### Added
+
+- Jump hosts (ProxyJump): a saved SSH session can connect through another saved SSH session,
+  which can have a jump host of its own (up to 5 in a row). Each hop has its own login (saved
+  credential or SSH agent) and host-key check; the target is reached over an SSH tunnel through
+  them. Works for terminals, duplicate/reconnect, split panes, the resource bar and SFTP. The
+  session editor shows the route, the tree marks such sessions, and the password dialog says
+  "via …". Loops, non-SSH hops and too-long chains are refused when saving. A clear error names
+  the jump host that couldn't reach the target.
+- Import sessions (sidebar button or Home): from a MobaXterm `.mxtsessions` export or
+  `MobaXterm.ini`, from PuTTY's sessions in this PC's registry (Windows), or from a PuTTY `.reg`
+  export. A preview lists what will be imported (folder, server, jump hosts, key file) and what
+  can't be, and why (RDP, VNC, Telnet, serial: not supported yet). Sessions land in "Imported from
+  MobaXterm/PuTTY" with their folders; MobaXterm gateways and PuTTY SSH proxies become shared jump
+  host sessions. Sessions already saved are skipped by default. Passwords are never imported;
+  key-file paths go into the notes.
+
+### Changed
+
+- The Settings button's tooltip now says it comes in 1.0.
+
 ## [0.7.0] - 2026-11-19 — Phase 6: split panes, resource bar, multi-exec, paste check
 
 ### Added
