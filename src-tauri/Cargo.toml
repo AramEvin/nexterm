@@ -30,7 +30,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 russh-sftp = "3"
 sha2 = "0.11"
 base64 = "0.23"
-suppaftp = { version = "12", default-features = false, features = ["tokio-rustls-ring"] }
+suppaftp = { version = "13", default-features = false, features = ["tokio-rustls-ring"] }
 rustls-webpki-roots = { package = "webpki-roots", version = "1" }
 secrecy = { version = "0.10", features = ["serde"] }
 zeroize = "1"
